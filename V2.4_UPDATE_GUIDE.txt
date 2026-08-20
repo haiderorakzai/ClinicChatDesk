@@ -1,0 +1,49 @@
+ClinicChatDesk v2.4.0 — Live Demo + Per-Clinic Localization
+===========================================================
+
+WHAT IS NEW
+1. Public self-service live demo at /demo.
+   - Homepage now has "Try Live Demo".
+   - Every visitor gets an isolated temporary demo clinic.
+   - No signup/password is required.
+   - Demo workspaces expire automatically after 2 hours.
+   - Demo clinics are excluded from Super Admin clinic/revenue totals.
+   - Public demo start is rate-limited by IP.
+   - Live OpenAI demo usage is capped per demo clinic.
+   - WhatsApp connection is disabled in the public demo.
+
+2. Per-clinic localization.
+   - Country
+   - Phone country code
+   - Currency
+   - Timezone
+   - Available during signup and Business Knowledge settings.
+   - Country selection suggests a dial code/currency, but clinics can edit them.
+   - Currency is clinic-level; changing it synchronizes service currency codes.
+   - New clinics no longer default to SAR / Asia-Riyadh.
+
+3. Existing databases migrate safely.
+   - New columns are added automatically at startup.
+   - Existing clinic currency/timezone values are NOT silently overwritten.
+   - Existing clinics can choose/update their localization in Business Knowledge.
+
+DEPLOYMENT
+- Replace/upload the v2.4 files to the existing GitHub repository root.
+- Keep your existing Railway secrets/variables.
+- Railway auto-deploy should deploy the commit.
+- No database deletion/reset is required.
+
+OPTIONAL RAILWAY VARIABLES
+DEMO_AI_REQUEST_LIMIT=15
+DEMO_STARTS_PER_IP_PER_HOUR=3
+
+If omitted, those defaults are already used by the code.
+
+AFTER DEPLOYMENT TEST
+1. https://clinicchatdesk.com/health -> version should be 2.4.0
+2. https://clinicchatdesk.com -> click Try Live Demo
+3. Pick country, phone code, currency and timezone
+4. Launch demo -> should enter BrightSmile Dental Demo
+5. Business Knowledge -> change currency; services should follow it
+6. Live Test -> ask a price question and try a booking
+7. Super Admin -> temporary demo clinics should NOT appear as real clinics
