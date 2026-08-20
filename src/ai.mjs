@@ -1,4 +1,4 @@
-import { acceptCancellationOffer, cancelNextAppointmentForCustomer, createAppointment, declineCancellationOffer, findServiceByName, getBusinessBundle, getBusinessConfig, getConversationState, incrementUsage, listServices, recentMessages, saveMessage, setConversationState, setHandoff, slotsForDate, upsertLead } from './db.mjs';
+import { acceptCancellationOffer, cancelNextAppointmentForCustomer, createAppointment, declineCancellationOffer, findServiceByName, getBusinessBundle, getBusinessConfig, getConversationState, getUsage, incrementUsage, listServices, recentMessages, saveMessage, setConversationState, setHandoff, slotsForDate, upsertLead } from './db.mjs';
 import { envBool } from './env.mjs';
 
 const emergency = /\b(severe bleeding|can'?t breathe|cannot breathe|difficulty breathing|unconscious|chest pain|medical emergency|fainted|heavy bleeding)\b/i;
@@ -92,7 +92,9 @@ export async function processIncoming({businessId,customer,conversation,text,alr
   if(!cfg?.auto_reply){return{reply:null,paused:true};}
   if(envBool('DEMO_MODE',true)||!process.env.OPENAI_API_KEY){const reply=await demoReply({businessId,customerId:customer.id,text});saveMessage(conversation.id,'assistant',reply);return{reply,demo:true};}
 
-  const bundle=getBusinessBundle(businessId); const input=[{role:'system',content:systemPrompt(bundle)},...recentMessages(conversation.id,14).map(m=>({role:m.role==='assistant'?'assistant':'user',content:m.text}))];
+  const bundle=getBusinessBundle(businessId);
+  if(bundle.business?.is_demo && getUsage(businessId).ai_requests>=Math.max(5,Number(process.env.DEMO_AI_REQUEST_LIMIT||15))){const reply='You have reached the AI message limit for this temporary demo. Start a free trial to continue testing with your own clinic workspace.';saveMessage(conversation.id,'assistant',reply);return{reply,demoLimit:true};}
+  const input=[{role:'system',content:systemPrompt(bundle)},...recentMessages(conversation.id,14).map(m=>({role:m.role==='assistant'?'assistant':'user',content:m.text}))];
   let payload={model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input,tools:toolDefs,store:false};
   for(let round=0;round<4;round++){
     const resp=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Authorization':`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});

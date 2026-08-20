@@ -33,8 +33,12 @@ export function initDb() {
       slug TEXT NOT NULL UNIQUE,
       phone TEXT,
       address TEXT,
-      timezone TEXT NOT NULL DEFAULT 'Asia/Riyadh',
-      currency TEXT NOT NULL DEFAULT 'SAR',
+      country_code TEXT NOT NULL DEFAULT 'US',
+      phone_country_code TEXT NOT NULL DEFAULT '+1',
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      currency TEXT NOT NULL DEFAULT 'USD',
+      is_demo INTEGER NOT NULL DEFAULT 0,
+      demo_expires_at TEXT,
       status TEXT NOT NULL DEFAULT 'trial',
       plan TEXT NOT NULL DEFAULT 'starter',
       trial_ends_at TEXT,
@@ -86,7 +90,7 @@ export function initDb() {
       name TEXT NOT NULL,
       description TEXT,
       price REAL NOT NULL DEFAULT 0,
-      currency TEXT NOT NULL DEFAULT 'SAR',
+      currency TEXT NOT NULL DEFAULT 'USD',
       duration_minutes INTEGER NOT NULL DEFAULT 30,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
@@ -235,6 +239,10 @@ export function initDb() {
   `);
 
   // Safe migrations from ClinicAI Production v1 databases.
+  ensureColumn('businesses','country_code',"TEXT NOT NULL DEFAULT ''");
+  ensureColumn('businesses','phone_country_code',"TEXT NOT NULL DEFAULT ''");
+  ensureColumn('businesses','is_demo','INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('businesses','demo_expires_at','TEXT');
   ensureColumn('business_configs','lost_lead_recovery','INTEGER NOT NULL DEFAULT 1');
   ensureColumn('business_configs','recovery_delay_minutes','INTEGER NOT NULL DEFAULT 120');
   ensureColumn('business_configs','recovery_max_attempts','INTEGER NOT NULL DEFAULT 1');
@@ -267,16 +275,23 @@ function slugify(s) {
   return slug;
 }
 
-export function createClinicWithOwner({clinicName, ownerName, email, password, phone=''}) {
+function cleanCountryCode(v, fallback='US'){const x=String(v||'').trim().toUpperCase();return /^[A-Z]{2}$/.test(x)?x:fallback;}
+function cleanDial(v, fallback='+1'){const x=String(v||'').trim().replace(/\s+/g,'');return /^\+\d{1,4}$/.test(x)?x:fallback;}
+function cleanCurrency(v, fallback='USD'){const x=String(v||'').trim().toUpperCase();return /^[A-Z]{3}$/.test(x)?x:fallback;}
+function cleanTimezone(v, fallback='UTC'){const x=String(v||'').trim();try{new Intl.DateTimeFormat('en',{timeZone:x}).format();return x||fallback}catch{return fallback;}}
+function normalizePhone(dial, phone){const raw=String(phone||'').trim();if(!raw)return '';if(raw.startsWith('+'))return raw.replace(/[\s()-]/g,'');const local=raw.replace(/[^0-9]/g,'').replace(/^0+/,'');return local?`${dial}${local}`:'';}
+
+export function createClinicWithOwner({clinicName, ownerName, email, password, phone='', countryCode='US', phoneCountryCode='+1', currency='USD', timezone='UTC'}) {
   const e = String(email).trim().toLowerCase();
   if (!clinicName || !ownerName || !e || String(password).length < 8) throw new Error('Clinic, owner, email and password (8+ chars) are required.');
   if (db.prepare('SELECT 1 FROM users WHERE email=?').get(e)) throw new Error('An account already exists for this email.');
+  const cc=cleanCountryCode(countryCode), dial=cleanDial(phoneCountryCode), cur=cleanCurrency(currency), tz=cleanTimezone(timezone);
   const businessId=id('biz'), userId=id('usr'), t=now();
   const trialEnd=new Date(Date.now()+trialDays*86400000).toISOString();
   db.exec('BEGIN');
   try {
-    db.prepare('INSERT INTO businesses (id,name,slug,phone,address,timezone,currency,status,plan,trial_ends_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(businessId,String(clinicName).trim(),slugify(clinicName),String(phone).trim(),'','Asia/Riyadh','SAR','trial','starter',trialEnd,t,t);
+    db.prepare('INSERT INTO businesses (id,name,slug,phone,address,country_code,phone_country_code,timezone,currency,is_demo,demo_expires_at,status,plan,trial_ends_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(businessId,String(clinicName).trim(),slugify(clinicName),normalizePhone(dial,phone),'',cc,dial,tz,cur,0,null,'trial','starter',trialEnd,t,t);
     db.prepare('INSERT INTO users (id,business_id,name,email,password_hash,role,active,created_at) VALUES (?,?,?,?,?,?,1,?)')
       .run(userId,businessId,String(ownerName).trim(),e,hashPassword(password),'clinic_admin',t);
     db.prepare('INSERT INTO business_configs (business_id,updated_at) VALUES (?,?)').run(businessId,t);
@@ -285,6 +300,33 @@ export function createClinicWithOwner({clinicName, ownerName, email, password, p
     return {businessId,userId};
   } catch (e2) { db.exec('ROLLBACK'); throw e2; }
 }
+
+export function createDemoClinic({countryCode='US',phoneCountryCode='+1',currency='USD',timezone='UTC'}={}){
+  const cc=cleanCountryCode(countryCode),dial=cleanDial(phoneCountryCode),cur=cleanCurrency(currency),tz=cleanTimezone(timezone);
+  const businessId=id('biz'),userId=id('usr'),t=now(),expires=new Date(Date.now()+2*60*60*1000).toISOString();
+  const email=`demo-${randomUUID()}@demo.clinicchatdesk.local`;
+  db.exec('BEGIN');
+  try{
+    db.prepare('INSERT INTO businesses (id,name,slug,phone,address,country_code,phone_country_code,timezone,currency,is_demo,demo_expires_at,status,plan,trial_ends_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(businessId,'BrightSmile Dental Demo',slugify(`brightsmile-demo-${randomUUID().slice(0,8)}`),normalizePhone(dial,'5551234567'),'123 Demo Avenue',cc,dial,tz,cur,1,expires,'demo','pro',expires,t,t);
+    db.prepare('INSERT INTO users (id,business_id,name,email,password_hash,role,active,created_at) VALUES (?,?,?,?,?,?,1,?)')
+      .run(userId,businessId,'Demo Visitor',email,hashPassword(randomUUID()),'clinic_admin',t);
+    const hours={sun:['09:00','18:00'],mon:['09:00','18:00'],tue:['09:00','18:00'],wed:['09:00','18:00'],thu:['09:00','18:00'],fri:['09:00','18:00'],sat:['09:00','16:00']};
+    db.prepare('INSERT INTO business_configs (business_id,ai_name,greeting,tone,languages_json,opening_hours_json,faq_json,updated_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(businessId,'Mia','Hello! Welcome to BrightSmile Dental. How can I help you today?','Warm & professional',JSON.stringify(['English']),JSON.stringify(hours),JSON.stringify([{q:'Do you accept walk-ins?',a:'Walk-ins are welcome subject to availability.'},{q:'Where are you located?',a:'123 Demo Avenue.'}]),t);
+    db.prepare('INSERT INTO whatsapp_connections (business_id,updated_at) VALUES (?,?)').run(businessId,t);
+    const addService=(name,price,duration)=>{const sid=id('svc');db.prepare('INSERT INTO services (id,business_id,name,description,price,currency,duration_minutes,active,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(sid,businessId,name,'Demo clinic service',price,cur,duration,1,t);return sid;};
+    const cleaningId=addService('Dental Cleaning',120,30), whiteningId=addService('Teeth Whitening',450,60), consultId=addService('Dental Consultation',80,30);
+    const addCustomer=(name,phone)=>{const cid=id('cus');db.prepare('INSERT INTO customers (id,business_id,name,phone,created_at) VALUES (?,?,?,?,?)').run(cid,businessId,name,phone,t);const conv=id('con');db.prepare('INSERT INTO conversations (id,business_id,customer_id,channel,human_handoff,state_json,created_at,updated_at) VALUES (?,?,?,?,0,?,?,?)').run(conv,businessId,cid,'web','{}',t,t);return{cid,conv};};
+    const sarah=addCustomer('Sarah Lee',`${dial}5551001`);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),sarah.conv,'user','How much is teeth whitening?','text','{}',t);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),sarah.conv,'assistant',`Teeth Whitening is ${cur} 450. Would you like me to check appointment times?`,'text','{}',t);db.prepare("INSERT INTO leads (id,business_id,customer_id,service_name,status,last_intent_at,created_at,updated_at) VALUES (?,?,?,?, 'new',?,?,?)").run(id('lead'),businessId,sarah.cid,'Teeth Whitening',t,t,t);
+    const omar=addCustomer('Omar Khan',`${dial}5551002`);const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);const apt1=id('apt');db.prepare('INSERT INTO appointments (id,business_id,customer_id,service_id,date,time,duration_minutes,status,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(apt1,businessId,omar.cid,cleaningId,tomorrow,'10:00',30,'confirmed','ai',t);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),omar.conv,'user','Please book a dental cleaning tomorrow.','text','{}',t);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),omar.conv,'assistant',`✅ Confirmed. Your Dental Cleaning appointment is booked for ${tomorrow} at 10:00.`,'text','{}',t);
+    const lina=addCustomer('Lina Ahmed',`${dial}5551003`);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),lina.conv,'user','I sent a voice note asking for whitening this week.','voice',JSON.stringify({transcription_status:'completed'}),t);const recApt=id('apt');const recDate=new Date(Date.now()+2*86400000).toISOString().slice(0,10);db.prepare('INSERT INTO appointments (id,business_id,customer_id,service_id,date,time,duration_minutes,status,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(recApt,businessId,lina.cid,whiteningId,recDate,'15:00',60,'confirmed','recovered_lead',t);db.prepare("INSERT INTO recovery_cases (id,business_id,customer_id,conversation_id,service_name,status,scheduled_at,attempts,last_sent_at,recovered_appointment_id,estimated_value,created_at,updated_at) VALUES (?,?,?,?,?,'recovered',?,1,?,?,?,?,?)").run(id('rec'),businessId,lina.cid,lina.conv,'Teeth Whitening',t,t,recApt,450,t,t);
+    const cancelled=addCustomer('James Miller',`${dial}5551004`);const gapDate=new Date(Date.now()+3*86400000).toISOString().slice(0,10);const cancelledApt=id('apt');db.prepare('INSERT INTO appointments (id,business_id,customer_id,service_id,date,time,duration_minutes,status,source,cancel_reason,cancelled_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(cancelledApt,businessId,cancelled.cid,consultId,gapDate,'14:00',30,'cancelled','ai','Demo cancellation',t,t);const refill=addCustomer('Maya Patel',`${dial}5551005`);const refillApt=id('apt');db.prepare('INSERT INTO appointments (id,business_id,customer_id,service_id,date,time,duration_minutes,status,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(refillApt,businessId,refill.cid,consultId,gapDate,'14:00',30,'confirmed','cancellation_autofill',t);db.prepare("INSERT INTO cancellation_opportunities (id,business_id,cancelled_appointment_id,service_id,date,time,status,filled_appointment_id,recovered_value,created_at,updated_at) VALUES (?,?,?,?,?,?,'filled',?,?,?,?)").run(id('gap'),businessId,cancelledApt,consultId,gapDate,'14:00',refillApt,80,t,t);
+    db.exec('COMMIT');return{businessId,userId,expires};
+  }catch(e){db.exec('ROLLBACK');throw e;}
+}
+
+export function cleanupExpiredDemoClinics(){return db.prepare('DELETE FROM businesses WHERE is_demo=1 AND demo_expires_at IS NOT NULL AND demo_expires_at < ?').run(now()).changes;}
 
 export function findUserByEmail(email) { return db.prepare('SELECT * FROM users WHERE email=?').get(String(email).trim().toLowerCase()); }
 export function getUserById(userId) { return db.prepare('SELECT id,business_id,name,email,role,active,created_at FROM users WHERE id=?').get(userId); }
@@ -320,10 +362,18 @@ export function getBusinessBundle(businessId) { return {business:getBusiness(bus
 export function updateBusiness(businessId, patch={}) {
   const cur=getBusiness(businessId); if(!cur) throw new Error('Clinic not found.');
   const name=String(patch.name ?? cur.name).trim() || cur.name;
-  const phone=String(patch.phone ?? cur.phone ?? '').trim(); const address=String(patch.address ?? cur.address ?? '').trim();
-  const timezone=String(patch.timezone ?? cur.timezone).trim() || cur.timezone; const currency=String(patch.currency ?? cur.currency).trim().toUpperCase().slice(0,3) || cur.currency;
-  db.prepare('UPDATE businesses SET name=?,phone=?,address=?,timezone=?,currency=?,updated_at=? WHERE id=?').run(name,phone,address,timezone,currency,now(),businessId); return getBusiness(businessId);
+  const countryCode=cleanCountryCode(patch.country_code ?? patch.countryCode ?? cur.country_code,cur.country_code||'US');
+  const phoneCountryCode=cleanDial(patch.phone_country_code ?? patch.phoneCountryCode ?? cur.phone_country_code,cur.phone_country_code||'+1');
+  const timezone=cleanTimezone(patch.timezone ?? cur.timezone,cur.timezone||'UTC');
+  const currency=cleanCurrency(patch.currency ?? cur.currency,cur.currency||'USD');
+  const rawPhone=patch.phone===undefined?(cur.phone||''):String(patch.phone||'');
+  const phone=patch.phone===undefined?rawPhone:normalizePhone(phoneCountryCode,rawPhone);
+  const address=String(patch.address ?? cur.address ?? '').trim();
+  db.exec('BEGIN');
+  try{db.prepare('UPDATE businesses SET name=?,phone=?,address=?,country_code=?,phone_country_code=?,timezone=?,currency=?,updated_at=? WHERE id=?').run(name,phone,address,countryCode,phoneCountryCode,timezone,currency,now(),businessId);if(currency!==cur.currency)db.prepare('UPDATE services SET currency=? WHERE business_id=?').run(currency,businessId);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+  return getBusiness(businessId);
 }
+
 export function updateConfig(businessId, patch={}) {
   const cur=getBusinessConfig(businessId); if(!cur) throw new Error('Config not found.');
   const langs=Array.isArray(patch.languages)?patch.languages.map(String).slice(0,8):cur.languages;
@@ -342,7 +392,7 @@ export function updateConfig(businessId, patch={}) {
 export function listServices(businessId) { return db.prepare('SELECT * FROM services WHERE business_id=? AND active=1 ORDER BY name').all(businessId); }
 export function createService(businessId, p={}) {
   const b=getBusiness(businessId); if(!b) throw new Error('Clinic not found.');
-  const service={id:id('svc'),name:String(p.name||'').trim(),description:String(p.description||'').trim(),price:Number(p.price||0),currency:String(p.currency||b.currency||'SAR').toUpperCase().slice(0,3),duration_minutes:Math.max(5,Math.min(480,Number(p.duration_minutes||30)))};
+  const service={id:id('svc'),name:String(p.name||'').trim(),description:String(p.description||'').trim(),price:Number(p.price||0),currency:String(p.currency||b.currency||'USD').toUpperCase().slice(0,3),duration_minutes:Math.max(5,Math.min(480,Number(p.duration_minutes||30)))};
   if(!service.name) throw new Error('Service name is required.');
   db.prepare('INSERT INTO services (id,business_id,name,description,price,currency,duration_minutes,active,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(service.id,businessId,service.name,service.description,service.price,service.currency,service.duration_minutes,1,now()); return service;
 }
@@ -532,8 +582,8 @@ export function businessByPhoneNumberId(phoneNumberId){ const w=db.prepare('SELE
 export function incrementUsage(businessId,{input_tokens=0,output_tokens=0}={}){ const month=new Date().toISOString().slice(0,7); db.prepare(`INSERT INTO usage_monthly (business_id,month,ai_requests,input_tokens,output_tokens) VALUES (?,?,1,?,?) ON CONFLICT(business_id,month) DO UPDATE SET ai_requests=ai_requests+1,input_tokens=input_tokens+excluded.input_tokens,output_tokens=output_tokens+excluded.output_tokens`).run(businessId,month,Number(input_tokens||0),Number(output_tokens||0)); }
 export function getUsage(businessId){ const month=new Date().toISOString().slice(0,7); return db.prepare('SELECT * FROM usage_monthly WHERE business_id=? AND month=?').get(businessId,month)||{business_id:businessId,month,ai_requests:0,input_tokens:0,output_tokens:0}; }
 
-export function listClinics(){ return db.prepare(`SELECT b.*,(SELECT email FROM users u WHERE u.business_id=b.id AND u.role='clinic_admin' ORDER BY u.created_at LIMIT 1) owner_email,(SELECT COUNT(*) FROM conversations c WHERE c.business_id=b.id) conversations,(SELECT ai_requests FROM usage_monthly um WHERE um.business_id=b.id AND um.month=substr(date('now'),1,7)) ai_requests,(SELECT COALESCE(SUM(estimated_value),0) FROM recovery_cases r WHERE r.business_id=b.id AND r.status='recovered') recovered_lead_value,(SELECT COALESCE(SUM(recovered_value),0) FROM cancellation_opportunities o WHERE o.business_id=b.id) cancellation_value FROM businesses b ORDER BY b.created_at DESC`).all(); }
-export function superAutomationStats(){const businesses=db.prepare('SELECT id FROM businesses').all();return businesses.reduce((a,b)=>{const s=automationStats(b.id);a.recoveredLeads+=s.lostLead.recovered;a.refilled+=s.cancellation.filled;a.voiceNotes+=s.voiceNotes;a.recoveredValue+=s.totalRecoveredValue;return a;},{recoveredLeads:0,refilled:0,voiceNotes:0,recoveredValue:0});}
+export function listClinics(){ return db.prepare(`SELECT b.*,(SELECT email FROM users u WHERE u.business_id=b.id AND u.role='clinic_admin' ORDER BY u.created_at LIMIT 1) owner_email,(SELECT COUNT(*) FROM conversations c WHERE c.business_id=b.id) conversations,(SELECT ai_requests FROM usage_monthly um WHERE um.business_id=b.id AND um.month=substr(date('now'),1,7)) ai_requests,(SELECT COALESCE(SUM(estimated_value),0) FROM recovery_cases r WHERE r.business_id=b.id AND r.status='recovered') recovered_lead_value,(SELECT COALESCE(SUM(recovered_value),0) FROM cancellation_opportunities o WHERE o.business_id=b.id) cancellation_value FROM businesses b WHERE COALESCE(b.is_demo,0)=0 ORDER BY b.created_at DESC`).all(); }
+export function superAutomationStats(){const businesses=db.prepare('SELECT id FROM businesses WHERE COALESCE(is_demo,0)=0').all();return businesses.reduce((a,b)=>{const s=automationStats(b.id);a.recoveredLeads+=s.lostLead.recovered;a.refilled+=s.cancellation.filled;a.voiceNotes+=s.voiceNotes;a.recoveredValue+=s.totalRecoveredValue;return a;},{recoveredLeads:0,refilled:0,voiceNotes:0,recoveredValue:0});}
 export function superSetClinic(businessId,{status,plan}){ const b=getBusiness(businessId);if(!b)throw new Error('Clinic not found.');const s=['trial','active','suspended','cancelled'].includes(status)?status:b.status;const p=['starter','pro','growth','custom'].includes(plan)?plan:b.plan;db.prepare('UPDATE businesses SET status=?,plan=?,updated_at=? WHERE id=?').run(s,p,now(),businessId);return getBusiness(businessId); }
 
 export function purgeOldMessages(days=30){ const cutoff=new Date(Date.now()-Number(days)*86400000).toISOString(); return db.prepare('DELETE FROM messages WHERE created_at < ?').run(cutoff).changes; }

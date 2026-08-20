@@ -7,13 +7,13 @@ import { loadEnv, envBool } from './env.mjs';
 loadEnv();
 import { verifyPassword } from './crypto.mjs';
 import { clearCookie, getCurrentUser, logout, requireUser, sessionCookie, startSession } from './auth.mjs';
-import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupSessions, connectWhatsAppManaged, createClinicWithOwner, createService, dashboard, dbInfo, findUserByEmail, getBusinessBundle, getConversationMessages, getOrCreateConversation, getUserById, getWhatsAppConnection, initDb, listAppointments, listCancellationOpportunities, listClinics, listConversations, listRecoveryCases, purgeOldMessages, setHandoff, superAutomationStats, superSetClinic, updateBusiness, updateConfig, updateService } from './db.mjs';
+import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupExpiredDemoClinics, cleanupSessions, connectWhatsAppManaged, createClinicWithOwner, createDemoClinic, createService, dashboard, dbInfo, findUserByEmail, getBusinessBundle, getConversationMessages, getOrCreateConversation, getUserById, getWhatsAppConnection, initDb, listAppointments, listCancellationOpportunities, listClinics, listConversations, listRecoveryCases, purgeOldMessages, setHandoff, superAutomationStats, superSetClinic, updateBusiness, updateConfig, updateService } from './db.mjs';
 import { processIncoming, transcribeAudio } from './ai.mjs';
 import { runAutomationTick } from './automation.mjs';
 import { handleWhatsAppPayload, verifyMetaSignature, verifyWebhook } from './whatsapp.mjs';
 
-initDb(); cleanupSessions(); purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));
-setInterval(()=>{try{cleanupSessions();purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));}catch{}},12*60*60*1000).unref();
+initDb(); cleanupSessions(); cleanupExpiredDemoClinics(); purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));
+setInterval(()=>{try{cleanupSessions();cleanupExpiredDemoClinics();purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));}catch{}},12*60*60*1000).unref();
 setInterval(()=>runAutomationTick().catch(e=>console.error('Automation tick error:',e.message)),60_000).unref();
 setTimeout(()=>runAutomationTick().catch(e=>console.error('Initial automation tick error:',e.message)),5_000).unref();
 
@@ -30,19 +30,28 @@ async function parseBody(req,limit=1_000_000){const raw=await readRaw(req,limit)
 function sameOrigin(req){if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;const origin=req.headers.origin;if(!origin)return true;try{return new URL(origin).host===req.headers.host;}catch{return false;}}
 function staticFile(res,rel){rel=path.normalize(rel).replace(/^(\.\.[/\\])+/, '');const full=path.join(publicDir,rel);if(!full.startsWith(publicDir)||!fs.existsSync(full)||fs.statSync(full).isDirectory())return false;const ext=path.extname(full);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.ico':'image/x-icon'};res.writeHead(200,{'Content-Type':types[ext]||'application/octet-stream','Cache-Control':ext==='.html'?'no-store':'public, max-age=3600',...securityHeaders()});fs.createReadStream(full).pipe(res);return true;}
 function redirect(res,to){res.writeHead(302,{Location:to,'Cache-Control':'no-store',...securityHeaders()});res.end();}
-function authedClinic(req,res){const u=requireUser(req,['clinic_admin']);if(!u){send(res,401,{error:'Authentication required.'});return null;}return u;}
+function authedClinic(req,res){cleanupExpiredDemoClinics();const u=requireUser(req,['clinic_admin']);if(!u){send(res,401,{error:'Authentication required.'});return null;}return u;}
 function authedSuper(req,res){const u=requireUser(req,['super_admin']);if(!u){send(res,401,{error:'Super admin required.'});return null;}return u;}
 
 const loginAttempts=new Map();
 function rateLimitLogin(ip){const t=Date.now();let x=loginAttempts.get(ip)||{n:0,reset:t+15*60_000};if(t>x.reset)x={n:0,reset:t+15*60_000};x.n++;loginAttempts.set(ip,x);return x.n<=12;}
 
+const demoStarts=new Map();
+function rateLimitDemo(ip){const t=Date.now(),limit=Math.max(1,Number(process.env.DEMO_STARTS_PER_IP_PER_HOUR||3));let x=demoStarts.get(ip)||{n:0,reset:t+60*60_000};if(t>x.reset)x={n:0,reset:t+60*60_000};x.n++;demoStarts.set(ip,x);return x.n<=limit;}
+
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(!sameOrigin(req)) return send(res,403,{error:'Origin rejected.'});
-    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.3.0',demoMode:envBool('DEMO_MODE',true)});
+    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.4.0',demoMode:envBool('DEMO_MODE',true)});
     if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:{appId:process.env.META_APP_ID||'',embeddedSignupConfigId:process.env.META_EMBEDDED_SIGNUP_CONFIG_ID||''}});
     if(req.method==='GET'&&url.pathname==='/api/me'){const u=getCurrentUser(req);return send(res,200,{user:u?getUserById(u.id):null});}
+
+    if(req.method==='POST'&&url.pathname==='/api/demo/start'){
+      const ip=req.headers['x-forwarded-for']?.split(',')[0]?.trim()||req.socket.remoteAddress||'unknown';
+      if(!rateLimitDemo(ip))return send(res,429,{error:'Too many demo sessions from this network. Please try again later.'});
+      const {json}=await parseBody(req);logout(req);const demo=createDemoClinic(json);const s=startSession(demo.userId);return send(res,201,{ok:true,expires:demo.expires},{'Set-Cookie':sessionCookie(s.token,s.expires,isProd)});
+    }
 
     if(req.method==='POST'&&url.pathname==='/api/auth/signup'){
       const {json}=await parseBody(req);const result=createClinicWithOwner(json);const user=findUserByEmail(json.email);const s=startSession(user.id);return send(res,201,{ok:true,businessId:result.businessId,user:getUserById(user.id)},{'Set-Cookie':sessionCookie(s.token,s.expires,isProd)});
@@ -72,7 +81,8 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='POST'&&url.pathname==='/api/clinic/test-chat'){const {json}=await parseBody(req);const phone=String(json.phone||'+10000000000');const {customer,conversation}=getOrCreateConversation(u.business_id,phone,json.name||'Test Patient','web');const result=await processIncoming({businessId:u.business_id,customer,conversation,text:String(json.message||'')});return send(res,200,result);}
       if(req.method==='POST'&&url.pathname==='/api/clinic/test-voice'){
         if(envBool('DEMO_MODE',true)||!process.env.OPENAI_API_KEY)return send(res,400,{error:'Voice-note transcription needs live OpenAI mode. Set OPENAI_API_KEY and DEMO_MODE=false.'});
-        const cfg=getBusinessBundle(u.business_id).config;if(!cfg.voice_notes_enabled)return send(res,400,{error:'Voice-note receptionist is disabled in AI Settings.'});
+        const bundle=getBusinessBundle(u.business_id),cfg=bundle.config;if(!cfg.voice_notes_enabled)return send(res,400,{error:'Voice-note receptionist is disabled in AI Settings.'});
+        if(bundle.business?.is_demo && automationStats(u.business_id).voiceNotes>=3)return send(res,429,{error:'This demo allows up to 3 voice-note tests. Start your own trial for continued testing.'});
         const raw=await readRaw(req,16*1024*1024);if(!raw.length)return send(res,400,{error:'Choose an audio file first.'});
         const mime=String(req.headers['content-type']||'audio/ogg').split(';')[0];const filename=decodeURIComponent(url.searchParams.get('filename')||'voice-note.ogg');
         const transcript=await transcribeAudio({buffer:raw,mimeType:mime,filename,businessId:u.business_id});const {customer,conversation}=getOrCreateConversation(u.business_id,'+10000000001','Voice Demo Patient','web');const result=await processIncoming({businessId:u.business_id,customer,conversation,text:transcript,messageMeta:{message_type:'voice',transcription_status:'completed',local_demo:true}});return send(res,200,{transcript,...result});
@@ -94,6 +104,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/')return staticFile(res,'index.html')||send(res,404,'Not found');
       if(url.pathname==='/login')return staticFile(res,'login.html')||send(res,404,'Not found');
       if(url.pathname==='/signup')return staticFile(res,'signup.html')||send(res,404,'Not found');
+      if(url.pathname==='/demo')return staticFile(res,'demo.html')||send(res,404,'Not found');
       if(url.pathname==='/app'){const u=getCurrentUser(req);if(!u)return redirect(res,'/login');if(u.role==='super_admin')return redirect(res,'/super-admin');return staticFile(res,'app.html')||send(res,404,'Not found');}
       if(url.pathname==='/super-admin'){const u=getCurrentUser(req);if(!u)return redirect(res,'/login');if(u.role!=='super_admin')return redirect(res,'/app');return staticFile(res,'super.html')||send(res,404,'Not found');}
       if(url.pathname==='/privacy')return staticFile(res,'privacy.html')||send(res,404,'Not found');
