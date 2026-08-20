@@ -1,0 +1,16 @@
+{
+  "name": "clinicchatdesk-saas-production",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ClinicChatDesk multi-tenant clinic WhatsApp AI receptionist with lost-lead recovery, cancellation auto-fill and voice-note AI.",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "NODE_ENV=development node src/server.mjs",
+    "smoke": "node src/smoke.mjs",
+    "secrets": "node scripts/generate-secrets.mjs"
+  }
+}

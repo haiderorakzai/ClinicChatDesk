@@ -1,0 +1,24 @@
+ClinicChatDesk Local Demo v2.2 — Windows launcher fix
+======================================================
+
+1. Extract the ZIP fully to a normal folder.
+2. Open the extracted ClinicChatDesk-SaaS-v2.2-WINDOWS-LAUNCHER-FIX folder.
+3. Double-click START_LOCAL_WINDOWS.bat.
+4. Keep the black command window open.
+5. Your browser will open automatically ONLY AFTER the server is listening.
+
+Website:      http://localhost:3100
+Login:        http://localhost:3100/login
+Super Admin:  http://localhost:3100/super-admin
+
+Local Super Admin:
+Email:    admin@clinicchatdesk.local
+Password: ClinicChatDesk123!
+
+If the browser does not open automatically, double-click OPEN_WEBSITE.bat.
+
+If you see "Port 3100 is already in use", close any older ClinicAI/ClinicChatDesk
+command windows first and then start this version again.
+
+This v2.2 package removes the broken Windows command that could show:
+"\\ — The network path was not found."
