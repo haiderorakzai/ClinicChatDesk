@@ -101,7 +101,7 @@ export async function processIncoming({businessId,customer,conversation,text,alr
     const calls=(data.output||[]).filter(x=>x.type==='function_call');
     if(!calls.length){const reply=data.output_text||extractText(data)||'I’m sorry, I could not complete that request.';saveMessage(conversation.id,'assistant',reply);return{reply};}
     const outputs=[]; for(const call of calls){let args={};try{args=JSON.parse(call.arguments||'{}')}catch{} const result=await toolCall({businessId,customerId:customer.id,conversationId:conversation.id,name:call.name,args});outputs.push({type:'function_call_output',call_id:call.call_id,output:JSON.stringify(result)});}
-    payload={...payload,previous_response_id:data.id,input:outputs};
+    payload={...payload,input:[...payload.input,...(data.output||[]),...outputs]};
   }
   const reply='I’m connecting you with clinic staff so they can help further.';setHandoff(businessId,conversation.id,true);saveMessage(conversation.id,'assistant',reply);return{reply,handoff:true};
 }
