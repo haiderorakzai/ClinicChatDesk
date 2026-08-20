@@ -30,6 +30,7 @@ A multi-tenant SaaS for selling a clinic-specific AI WhatsApp front desk with **
 ## Core SaaS included
 
 - Public marketing website + pricing
+- Deploy marker: v2.3
 - Clinic signup/login
 - Clinic admin dashboard
 - Super-admin dashboard for the platform owner
