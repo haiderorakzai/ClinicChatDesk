@@ -1,0 +1,14 @@
+ClinicChatDesk v2.6.1 UI/CSS Cache Fix
+
+Why this fix exists:
+The v2.6 HTML deployed successfully but browsers could keep the older styles.css for up to 1 hour. This caused the new logo, navigation and dashboard-preview markup to render with old CSS, producing oversized images and an unstyled/broken hero preview.
+
+Fixes:
+- Adds ?v=2.6.1 cache-busting to styles.css on all HTML pages.
+- Serves CSS with Cache-Control: no-store.
+- Adds defensive fixed sizing for the marketing header logo.
+- Bumps /health and package version to 2.6.1.
+
+Upload all files in this package to the matching paths in your existing GitHub repo.
+Do not change Railway variables or the /data volume.
+After Railway deploys, confirm /health says 2.6.1, then hard refresh once (Ctrl+F5).
