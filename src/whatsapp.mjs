@@ -5,7 +5,7 @@ import { processIncoming, transcribeAudio } from './ai.mjs';
 export function verifyWebhook(url){const mode=url.searchParams.get('hub.mode'),token=url.searchParams.get('hub.verify_token'),challenge=url.searchParams.get('hub.challenge');return mode==='subscribe'&&token===process.env.WHATSAPP_VERIFY_TOKEN?challenge:null;}
 export function verifyMetaSignature(raw,header){if(!process.env.META_APP_SECRET)return process.env.NODE_ENV!=='production';if(!header?.startsWith('sha256='))return false;const expected='sha256='+createHmac('sha256',process.env.META_APP_SECRET).update(raw).digest('hex');const a=Buffer.from(expected),b=Buffer.from(header);return a.length===b.length&&timingSafeEqual(a,b);}
 
-function graphVersion(){return process.env.META_GRAPH_VERSION||'v23.0';}
+function graphVersion(){return process.env.META_GRAPH_VERSION||'v26.0';}
 async function graphJson(url,token,opts={}){const r=await fetch(url,{...opts,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...(opts.headers||{})}});if(!r.ok)throw new Error(`Meta API error ${r.status}: ${await r.text()}`);return r.json();}
 
 export async function sendWhatsApp(businessId,to,text){
