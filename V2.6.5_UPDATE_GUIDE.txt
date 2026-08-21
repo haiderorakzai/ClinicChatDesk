@@ -1,4 +1,4 @@
-ClinicChatDesk v2.6.5
+ClinicChatDesk v2.6.6
 
 Changes:
 - Full ISO country/territory list in country and phone-code pickers.
