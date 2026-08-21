@@ -2,7 +2,7 @@ const qs=s=>document.querySelector(s), qsa=s=>[...document.querySelectorAll(s)];
 async function api(url,opts={}){const headers={...(opts.headers||{})};if(opts.body && typeof opts.body==='string' && !headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers});if(r.status===401){location.href='/login';throw new Error('Authentication required')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed');return j}
 async function post(url,data){return api(url,{method:'POST',body:JSON.stringify(data)})}
 let data=null,currentConv=null,localizationBound=false,setupLocalizationBound=false,publicConfig=null,metaSdkPromise=null,metaSdkReady=false,setupStep=1;
-console.info('ClinicChatDesk frontend v2.6.6 loaded');
+console.info('ClinicChatDesk frontend v2.6.7 loaded');
 const days=['sun','mon','tue','wed','thu','fri','sat'];
 const dayLabels={sun:'Sunday',mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday'};
 const aiToneOptions=['Warm & professional','Friendly & welcoming','Professional & concise','Formal & polite','Reassuring & calm','Premium & concierge-style','Direct & efficient','Warm & family-friendly','Confident & modern'];
@@ -80,7 +80,7 @@ function render(){
   qs('#aiName').value=c.ai_name||'';qs('#aiGreeting').value=c.greeting||'';qs('#autoReply').checked=!!c.auto_reply;qs('#bookingEnabled').checked=!!c.booking_enabled;qs('#safetyHandoff').checked=!!c.safety_handoff;
   qs('#sAiName').value=c.ai_name||'';qs('#sAiGreeting').value=c.greeting||'';populateAiSelects(c);
   qs('#recoveryEnabled').checked=!!c.lost_lead_recovery;qs('#recoveryDelay').value=String(c.recovery_delay_minutes||120);qs('#cancelAutoFill').checked=!!c.cancellation_autofill;qs('#cancelMaxOffers').value=String(c.cancellation_max_offers||5);qs('#voiceNotesEnabled').checked=!!c.voice_notes_enabled;
-  qs('#hours').innerHTML=days.map(d=>{const r=c.opening_hours?.[d]||['',''];return `<div style="display:grid;grid-template-columns:70px 1fr 1fr;gap:8px;margin:8px 0;align-items:center"><strong style="text-transform:capitalize">${d}</strong><input data-day="${d}" data-i="0" value="${esc(r?.[0]||'')}" placeholder="09:00"><input data-day="${d}" data-i="1" value="${esc(r?.[1]||'')}" placeholder="18:00"></div>`}).join('');
+  const hoursBox=qs('#hours');if(hoursBox){hoursBox.innerHTML=hoursEditorMarkup('main',c);bindHoursEditor(hoursBox);}
   qs('#faqs').value=(c.faqs||[]).map(x=>`${x.q||x.question||''} | ${x.a||x.answer||''}`).join('\n');qs('#extraAiNotes').value=c.extra_ai_notes||'';renderServices();renderStaff();renderSetup();
   renderWhatsApp();
 }
