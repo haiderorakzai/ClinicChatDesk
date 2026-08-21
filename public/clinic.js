@@ -2,6 +2,7 @@ const qs=s=>document.querySelector(s), qsa=s=>[...document.querySelectorAll(s)];
 async function api(url,opts={}){const headers={...(opts.headers||{})};if(opts.body && typeof opts.body==='string' && !headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers});if(r.status===401){location.href='/login';throw new Error('Authentication required')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed');return j}
 async function post(url,data){return api(url,{method:'POST',body:JSON.stringify(data)})}
 let data=null,currentConv=null,localizationBound=false,publicConfig=null,metaSdkPromise=null,metaSdkReady=false;
+console.info('ClinicChatDesk frontend v2.5.2 loaded');
 const days=['sun','mon','tue','wed','thu','fri','sat'];
 function esc(s=''){return String(s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
 function money(v,currency){const n=Number(v||0);try{return new Intl.NumberFormat(undefined,{style:'currency',currency:currency||'USD',maximumFractionDigits:0}).format(n)}catch{return `${currency||''} ${n.toFixed(0)}`}}
@@ -79,6 +80,15 @@ function renderWhatsApp(){
 async function loadMetaSdk(){
   const m=publicConfig?.meta||{};if(!m.appId)throw new Error('Meta App ID is not configured.');
   if(metaSdkReady&&window.FB)return window.FB;
+  // If the SDK object is already present (for example after browser caching),
+  // initialize it immediately instead of waiting for fbAsyncInit to fire again.
+  if(window.FB&&typeof window.FB.init==='function'){
+    try{
+      window.FB.init({appId:m.appId,cookie:true,xfbml:false,version:m.graphVersion||'v26.0'});
+      metaSdkReady=true;
+      return window.FB;
+    }catch(e){/* fall through to a clean SDK load */}
+  }
   if(metaSdkPromise)return metaSdkPromise;
   metaSdkPromise=new Promise((resolve,reject)=>{
     const timeout=setTimeout(()=>{metaSdkPromise=null;reject(new Error('Meta login could not be loaded. Check your browser privacy/ad-blocking settings and try again.'))},12000);
