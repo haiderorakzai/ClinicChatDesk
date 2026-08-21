@@ -24,7 +24,7 @@ const port=Number(process.env.PORT||3100);
 const isProd=(process.env.NODE_ENV||'development')==='production';
 const publicUrl=process.env.PUBLIC_URL||`http://localhost:${port}`;
 
-function securityHeaders(){return{'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'camera=(), geolocation=()','Content-Security-Policy':"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://graph.facebook.com https://www.facebook.com; frame-src https://www.facebook.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"};}
+function securityHeaders(){return{'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'camera=(), geolocation=()','Content-Security-Policy':"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://connect.facebook.net https://graph.facebook.com https://www.facebook.com; frame-src https://www.facebook.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"};}
 function send(res,status,data,extra={}){const isText=typeof data==='string';const body=isText?data:JSON.stringify(data);res.writeHead(status,{'Content-Type':isText?'text/plain; charset=utf-8':'application/json; charset=utf-8','Cache-Control':'no-store',...securityHeaders(),...extra});res.end(body);}
 async function readRaw(req,limit=1_000_000){const chunks=[];let total=0;for await(const c of req){total+=c.length;if(total>limit)throw new Error('Request too large.');chunks.push(c);}return Buffer.concat(chunks);}
 async function parseBody(req,limit=1_000_000){const raw=await readRaw(req,limit);let json={};if(raw.length){try{json=JSON.parse(raw.toString('utf8'));}catch{throw new Error('Invalid JSON.');}}return{raw,json};}
@@ -44,7 +44,7 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(!sameOrigin(req)) return send(res,403,{error:'Origin rejected.'});
-    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.5.3',demoMode:envBool('DEMO_MODE',true)});
+    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.5.4',demoMode:envBool('DEMO_MODE',true)});
     if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:metaPublicConfig()});
     if(req.method==='GET'&&url.pathname==='/api/me'){const u=getCurrentUser(req);return send(res,200,{user:u?getUserById(u.id):null});}
 
