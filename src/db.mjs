@@ -335,14 +335,14 @@ export function createClinicWithOwner({clinicName, ownerName, email, password, p
   } catch (e2) { db.exec('ROLLBACK'); throw e2; }
 }
 
-export function createDemoClinic({countryCode='US',phoneCountryCode='+1',currency='USD',timezone='UTC'}={}){
+export function createDemoClinic({countryCode='US',phoneCountryCode='+1',phone='5551234567',currency='USD',timezone='UTC'}={}){
   const cc=cleanCountryCode(countryCode),dial=cleanDial(phoneCountryCode),cur=cleanCurrency(currency),tz=cleanTimezone(timezone);
   const businessId=id('biz'),userId=id('usr'),t=now(),expires=new Date(Date.now()+2*60*60*1000).toISOString();
   const email=`demo-${randomUUID()}@demo.clinicchatdesk.local`;
   db.exec('BEGIN');
   try{
     db.prepare('INSERT INTO businesses (id,name,slug,phone,address,country_code,phone_country_code,timezone,currency,is_demo,demo_expires_at,status,plan,trial_ends_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(businessId,'BrightSmile Dental Demo',slugify(`brightsmile-demo-${randomUUID().slice(0,8)}`),normalizePhone(dial,'5551234567'),'123 Demo Avenue',cc,dial,tz,cur,1,expires,'demo','pro',expires,t,t);
+      .run(businessId,'BrightSmile Dental Demo',slugify(`brightsmile-demo-${randomUUID().slice(0,8)}`),normalizePhone(dial,phone||'5551234567'),'123 Demo Avenue',cc,dial,tz,cur,1,expires,'demo','pro',expires,t,t);
     db.prepare('INSERT INTO users (id,business_id,name,email,password_hash,role,active,created_at) VALUES (?,?,?,?,?,?,1,?)')
       .run(userId,businessId,'Demo Visitor',email,hashPassword(randomUUID()),'clinic_admin',t);
     const hours={sun:['09:00','18:00'],mon:['09:00','18:00'],tue:['09:00','18:00'],wed:['09:00','18:00'],thu:['09:00','18:00'],fri:['09:00','18:00'],sat:['09:00','16:00']};
