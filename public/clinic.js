@@ -2,7 +2,7 @@ const qs=s=>document.querySelector(s), qsa=s=>[...document.querySelectorAll(s)];
 async function api(url,opts={}){const headers={...(opts.headers||{})};if(opts.body && typeof opts.body==='string' && !headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers});if(r.status===401){location.href='/login';throw new Error('Authentication required')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed');return j}
 async function post(url,data){return api(url,{method:'POST',body:JSON.stringify(data)})}
 let data=null,currentConv=null,localizationBound=false,publicConfig=null,metaSdkPromise=null,metaSdkReady=false;
-console.info('ClinicChatDesk frontend v2.5.2 loaded');
+console.info('ClinicChatDesk frontend v2.5.3 loaded');
 const days=['sun','mon','tue','wed','thu','fri','sat'];
 function esc(s=''){return String(s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
 function money(v,currency){const n=Number(v||0);try{return new Intl.NumberFormat(undefined,{style:'currency',currency:currency||'USD',maximumFractionDigits:0}).format(n)}catch{return `${currency||''} ${n.toFixed(0)}`}}
@@ -79,37 +79,46 @@ function renderWhatsApp(){
 
 async function loadMetaSdk(){
   const m=publicConfig?.meta||{};if(!m.appId)throw new Error('Meta App ID is not configured.');
-  if(metaSdkReady&&window.FB)return window.FB;
-  // If the SDK object is already present (for example after browser caching),
-  // initialize it immediately instead of waiting for fbAsyncInit to fire again.
-  if(window.FB&&typeof window.FB.init==='function'){
-    try{
-      window.FB.init({appId:m.appId,cookie:true,xfbml:false,version:m.graphVersion||'v26.0'});
-      metaSdkReady=true;
-      return window.FB;
-    }catch(e){/* fall through to a clean SDK load */}
-  }
+  if(metaSdkReady&&window.FB&&typeof window.FB.login==='function')return window.FB;
   if(metaSdkPromise)return metaSdkPromise;
   metaSdkPromise=new Promise((resolve,reject)=>{
-    const timeout=setTimeout(()=>{metaSdkPromise=null;reject(new Error('Meta login could not be loaded. Check your browser privacy/ad-blocking settings and try again.'))},12000);
-    window.fbAsyncInit=()=>{
-      clearTimeout(timeout);
+    let settled=false;
+    const done=()=>{
+      if(settled)return;
       try{
-        window.FB.init({appId:m.appId,cookie:true,xfbml:false,version:m.graphVersion||'v26.0'});
-        metaSdkReady=true;
+        if(!window.FB||typeof window.FB.init!=='function')return;
+        // Initialize only after sdk.js has actually finished loading. In v2.5.2
+        // an early partial window.FB object could be mistaken for a ready SDK,
+        // which caused Meta to report: "FB.login() called before FB.init()".
+        window.FB.init({appId:String(m.appId),cookie:true,xfbml:false,version:m.graphVersion||'v26.0'});
+        metaSdkReady=true;settled=true;clearTimeout(timeout);
+        console.info('Meta Facebook SDK initialized for ClinicChatDesk');
         resolve(window.FB);
-      }catch(e){metaSdkPromise=null;reject(e)}
+      }catch(e){settled=true;clearTimeout(timeout);metaSdkPromise=null;reject(e)}
     };
-    const existing=document.querySelector('script[src="https://connect.facebook.net/en_US/sdk.js"]');
-    if(existing){
-      existing.addEventListener('error',()=>{clearTimeout(timeout);metaSdkPromise=null;reject(new Error('Could not load Meta login.'))},{once:true});
+    const fail=()=>{if(settled)return;settled=true;clearTimeout(timeout);metaSdkPromise=null;reject(new Error('Could not load Meta login. Check browser privacy/ad-blocking settings and try again.'))};
+    const timeout=setTimeout(()=>{if(settled)return;settled=true;metaSdkPromise=null;reject(new Error('Meta login could not be initialized. Please refresh the page and try again.'))},15000);
+
+    // Official SDK pattern: define fbAsyncInit BEFORE loading sdk.js.
+    window.fbAsyncInit=done;
+
+    let script=document.getElementById('facebook-jssdk');
+    if(script){
+      script.addEventListener('load',done,{once:true});
+      script.addEventListener('error',fail,{once:true});
+      // A previously loaded script may already be complete. Wait one task so the
+      // SDK can finish assigning window.FB, then initialize it.
+      setTimeout(done,0);
       return;
     }
-    const script=document.createElement('script');script.async=true;script.defer=true;script.crossOrigin='anonymous';script.src='https://connect.facebook.net/en_US/sdk.js';script.onerror=()=>{clearTimeout(timeout);metaSdkPromise=null;reject(new Error('Could not load Meta login.'))};document.head.appendChild(script);
+    script=document.createElement('script');
+    script.id='facebook-jssdk';script.async=true;script.defer=true;script.crossOrigin='anonymous';
+    script.src='https://connect.facebook.net/en_US/sdk.js';
+    script.addEventListener('load',done,{once:true});script.addEventListener('error',fail,{once:true});
+    document.head.appendChild(script);
   });
   return metaSdkPromise;
 }
-
 function normalizeMetaSession(raw){
   let payload=raw;try{if(typeof payload==='string')payload=JSON.parse(payload)}catch{return null}
   const items=Array.isArray(payload)?payload:[payload];
@@ -140,7 +149,7 @@ async function startWhatsAppSignup(mode='existing'){
     // ask for a second click instead of launching an unsolicited popup later.
     if(!metaSdkReady||!window.FB){cleanup();waProgress(false);waShowError('Meta login is still loading. Please wait a moment and click Connect WhatsApp again.');loadMetaSdk().catch(()=>{});return}
     const extras={setup:{},version:m.esVersion||'v4',sessionInfoVersion:String(m.sessionInfoVersion||'3')};const featureType=mode==='existing'?'whatsapp_business_app_onboarding':(m.featureType||'');if(featureType)extras.featureType=featureType;
-    FB.login(response=>{
+    window.FB.login(response=>{
       authCode=response?.authResponse?.code||'';
       if(!authCode){cleanup();waProgress(false);waShowError('Meta did not return an authorization code. Please complete the signup and try again.');return}
       // Session info normally arrives through postMessage. If Meta omits it,
