@@ -42,6 +42,8 @@ export function initDb() {
       status TEXT NOT NULL DEFAULT 'trial',
       plan TEXT NOT NULL DEFAULT 'starter',
       trial_ends_at TEXT,
+      onboarding_step INTEGER NOT NULL DEFAULT 1,
+      onboarding_complete INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -95,6 +97,16 @@ export function initDb() {
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       UNIQUE(business_id,name),
+      FOREIGN KEY(business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS staff (
+      id TEXT PRIMARY KEY,
+      business_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      specialty TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
       FOREIGN KEY(business_id) REFERENCES businesses(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS customers (
@@ -253,6 +265,8 @@ export function initDb() {
   ensureColumn('businesses','phone_country_code',"TEXT NOT NULL DEFAULT ''");
   ensureColumn('businesses','is_demo','INTEGER NOT NULL DEFAULT 0');
   ensureColumn('businesses','demo_expires_at','TEXT');
+  ensureColumn('businesses','onboarding_step','INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('businesses','onboarding_complete','INTEGER NOT NULL DEFAULT 0');
   ensureColumn('business_configs','lost_lead_recovery','INTEGER NOT NULL DEFAULT 1');
   ensureColumn('business_configs','recovery_delay_minutes','INTEGER NOT NULL DEFAULT 120');
   ensureColumn('business_configs','recovery_max_attempts','INTEGER NOT NULL DEFAULT 1');
@@ -337,6 +351,8 @@ export function createDemoClinic({countryCode='US',phoneCountryCode='+1',currenc
     db.prepare('INSERT INTO whatsapp_connections (business_id,updated_at) VALUES (?,?)').run(businessId,t);
     const addService=(name,price,duration)=>{const sid=id('svc');db.prepare('INSERT INTO services (id,business_id,name,description,price,currency,duration_minutes,active,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(sid,businessId,name,'Demo clinic service',price,cur,duration,1,t);return sid;};
     const cleaningId=addService('Dental Cleaning',120,30), whiteningId=addService('Teeth Whitening',450,60), consultId=addService('Dental Consultation',80,30);
+    db.prepare('INSERT INTO staff (id,business_id,name,specialty,active,created_at,updated_at) VALUES (?,?,?,?,1,?,?)').run(id('stf'),businessId,'Dr. Sarah Ahmed','General Dentist',t,t);
+    db.prepare('INSERT INTO staff (id,business_id,name,specialty,active,created_at,updated_at) VALUES (?,?,?,?,1,?,?)').run(id('stf'),businessId,'Dr. Omar Khan','Cosmetic Dentistry',t,t);
     const addCustomer=(name,phone)=>{const cid=id('cus');db.prepare('INSERT INTO customers (id,business_id,name,phone,created_at) VALUES (?,?,?,?,?)').run(cid,businessId,name,phone,t);const conv=id('con');db.prepare('INSERT INTO conversations (id,business_id,customer_id,channel,human_handoff,state_json,created_at,updated_at) VALUES (?,?,?,?,0,?,?,?)').run(conv,businessId,cid,'web','{}',t,t);return{cid,conv};};
     const sarah=addCustomer('Sarah Lee',`${dial}5551001`);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),sarah.conv,'user','How much is teeth whitening?','text','{}',t);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),sarah.conv,'assistant',`Teeth Whitening is ${cur} 450. Would you like me to check appointment times?`,'text','{}',t);db.prepare("INSERT INTO leads (id,business_id,customer_id,service_name,status,last_intent_at,created_at,updated_at) VALUES (?,?,?,?, 'new',?,?,?)").run(id('lead'),businessId,sarah.cid,'Teeth Whitening',t,t,t);
     const omar=addCustomer('Omar Khan',`${dial}5551002`);const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);const apt1=id('apt');db.prepare('INSERT INTO appointments (id,business_id,customer_id,service_id,date,time,duration_minutes,status,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(apt1,businessId,omar.cid,cleaningId,tomorrow,'10:00',30,'confirmed','ai',t);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),omar.conv,'user','Please book a dental cleaning tomorrow.','text','{}',t);db.prepare('INSERT INTO messages (id,conversation_id,role,text,message_type,metadata_json,created_at) VALUES (?,?,?,?,?,?,?)').run(id('msg'),omar.conv,'assistant',`✅ Confirmed. Your Dental Cleaning appointment is booked for ${tomorrow} at 10:00.`,'text','{}',t);
@@ -378,7 +394,7 @@ export function getWhatsAppConnection(businessId, includeSecret=false) {
   if (includeSecret && r.two_step_pin_enc) out.two_step_pin=decryptSecret(r.two_step_pin_enc);
   return out;
 }
-export function getBusinessBundle(businessId) { return {business:getBusiness(businessId),config:getBusinessConfig(businessId),whatsapp:getWhatsAppConnection(businessId),services:listServices(businessId)}; }
+export function getBusinessBundle(businessId) { return {business:getBusiness(businessId),config:getBusinessConfig(businessId),whatsapp:getWhatsAppConnection(businessId),services:listServices(businessId),staff:listStaff(businessId)}; }
 
 export function updateBusiness(businessId, patch={}) {
   const cur=getBusiness(businessId); if(!cur) throw new Error('Clinic not found.');
@@ -422,6 +438,35 @@ export function updateService(businessId, serviceId, p={}) {
   db.prepare('UPDATE services SET name=?,description=?,price=?,currency=?,duration_minutes=?,active=? WHERE id=? AND business_id=?')
     .run(String(p.name??cur.name).trim()||cur.name,String(p.description??cur.description??'').trim(),Number(p.price??cur.price),String(p.currency??cur.currency).toUpperCase().slice(0,3),Math.max(5,Math.min(480,Number(p.duration_minutes??cur.duration_minutes))),p.active===undefined?cur.active:(p.active?1:0),serviceId,businessId);
   return db.prepare('SELECT * FROM services WHERE id=?').get(serviceId);
+}
+
+
+export function listStaff(businessId) { return db.prepare('SELECT * FROM staff WHERE business_id=? AND active=1 ORDER BY name').all(businessId); }
+export function createStaff(businessId, p={}) {
+  if(!getBusiness(businessId)) throw new Error('Clinic not found.');
+  const name=String(p.name||'').trim(), specialty=String(p.specialty||'').trim();
+  if(!name) throw new Error('Doctor / staff name is required.');
+  const sid=id('stf'),t=now(); db.prepare('INSERT INTO staff (id,business_id,name,specialty,active,created_at,updated_at) VALUES (?,?,?,?,1,?,?)').run(sid,businessId,name,specialty,t,t);
+  return db.prepare('SELECT * FROM staff WHERE id=?').get(sid);
+}
+export function updateStaff(businessId, staffId, p={}) {
+  const cur=db.prepare('SELECT * FROM staff WHERE id=? AND business_id=?').get(staffId,businessId); if(!cur) throw new Error('Team member not found.');
+  const name=String(p.name??cur.name).trim()||cur.name, specialty=String(p.specialty??cur.specialty??'').trim(), active=p.active===undefined?cur.active:(p.active?1:0);
+  db.prepare('UPDATE staff SET name=?,specialty=?,active=?,updated_at=? WHERE id=? AND business_id=?').run(name,specialty,active,now(),staffId,businessId);
+  return db.prepare('SELECT * FROM staff WHERE id=?').get(staffId);
+}
+export function getOnboardingState(businessId){
+  const b=getBusiness(businessId),cfg=getBusinessConfig(businessId),wa=getWhatsAppConnection(businessId);
+  const checks={details:!!(b?.name&&b?.country_code&&b?.currency&&b?.timezone),services:listServices(businessId).length>0,team:listStaff(businessId).length>0,hours:Object.values(cfg?.opening_hours||{}).some(v=>Array.isArray(v)&&v[0]&&v[1]),ai:!!(cfg?.ai_name&&cfg?.greeting),whatsapp:wa?.status==='connected'};
+  const step=Math.max(1,Math.min(7,Number(b?.onboarding_step||1))), complete=!!Number(b?.onboarding_complete||0);
+  const completedCount=Object.values(checks).filter(Boolean).length;
+  return {step,complete,percent:complete?100:Math.max(Math.round(completedCount/6*86),Math.round((step-1)/7*86)),checks};
+}
+export function updateOnboarding(businessId,{step,complete}={}){
+  const b=getBusiness(businessId);if(!b)throw new Error('Clinic not found.');
+  const next=Math.max(1,Math.min(7,Number(step??b.onboarding_step??1))), done=complete===undefined?Number(b.onboarding_complete||0):(complete?1:0);
+  db.prepare('UPDATE businesses SET onboarding_step=?,onboarding_complete=?,updated_at=? WHERE id=?').run(next,done,now(),businessId);
+  return getOnboardingState(businessId);
 }
 
 export function listConversations(businessId, limit=100) {
@@ -590,7 +635,7 @@ export function automationStats(businessId){
 
 export function dashboard(businessId) {
   const counts={conversations:db.prepare('SELECT COUNT(*) n FROM conversations WHERE business_id=?').get(businessId).n,appointmentsToday:db.prepare("SELECT COUNT(*) n FROM appointments WHERE business_id=? AND date=? AND status='confirmed'").get(businessId,new Date().toISOString().slice(0,10)).n,leads:db.prepare("SELECT COUNT(*) n FROM leads WHERE business_id=? AND status='new'").get(businessId).n,handoffs:db.prepare('SELECT COUNT(*) n FROM conversations WHERE business_id=? AND human_handoff=1').get(businessId).n};
-  return {...getBusinessBundle(businessId),counts,automation:automationStats(businessId),recentConversations:listConversations(businessId,8),appointments:listAppointments(businessId,8),usage:getUsage(businessId)};
+  return {...getBusinessBundle(businessId),counts,automation:automationStats(businessId),recentConversations:listConversations(businessId,8),appointments:listAppointments(businessId,8),usage:getUsage(businessId),onboarding:getOnboardingState(businessId)};
 }
 
 function upsertWhatsAppConnection(businessId,{status='connected',display_number='',phone_number_id='',waba_id='',meta_business_id='',connection_source='managed',onboarding_mode='',verified_name='',access_token='',two_step_pin='',token_type='',token_expires_at=null,subscribed_at=null,last_verified_at=null,last_error=null}={}) {

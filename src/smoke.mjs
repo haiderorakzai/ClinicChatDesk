@@ -4,6 +4,7 @@ const db=await import('./db.mjs');db.initDb();
 const c=db.createClinicWithOwner({clinicName:'Smoke Dental',ownerName:'Owner',email:'smoke-clinic@example.com',password:'Password123!'});
 const hours={sun:['09:00','18:00'],mon:['09:00','18:00'],tue:['09:00','18:00'],wed:['09:00','18:00'],thu:['09:00','18:00'],fri:['09:00','18:00'],sat:['09:00','18:00']};db.updateConfig(c.businessId,{opening_hours:hours,recovery_delay_minutes:15,lost_lead_recovery:true,cancellation_autofill:true,voice_notes_enabled:true});db.createService(c.businessId,{name:'Dental Cleaning',price:200,duration_minutes:30});
 const bundle=db.getBusinessBundle(c.businessId);if(bundle.business.name!=='Smoke Dental'||bundle.business.currency!=='USD'||bundle.business.timezone!=='UTC'||bundle.services.length!==1||bundle.services[0].currency!=='USD')throw new Error('Base clinic/localization smoke failed');
+const staff=db.createStaff(c.businessId,{name:'Dr. Smoke',specialty:'Dentist'});if(!staff.id||db.listStaff(c.businessId).length!==1)throw new Error('Clinic team smoke failed');db.updateOnboarding(c.businessId,{step:4});if(db.getOnboardingState(c.businessId).step!==4)throw new Error('Onboarding progress smoke failed');
 
 // Lost-lead recovery detection.
 const lost=db.getOrCreateConversation(c.businessId,'+10001','Lost Lead','whatsapp');db.saveMessage(lost.conversation.id,'user','How much is Dental Cleaning?');db.upsertLead(c.businessId,lost.customer.id,'Dental Cleaning');
@@ -50,4 +51,4 @@ try{
   if(!metaCalls.some(x=>x.url.includes('/phone_new/register')&&x.method==='POST'))throw new Error('New Cloud API phone registration call was not made');
 }finally{globalThis.fetch=realFetch;}
 
-console.log('ClinicChatDesk v2.5 smoke test passed: automatic Meta Embedded Signup, encrypted WhatsApp credentials, webhook subscription, localization, live demo, Revenue Recovery, Cancellation Auto-Fill, and Voice-Note tracking.');fs.rmSync(dir,{recursive:true,force:true});
+console.log('ClinicChatDesk v2.6 smoke test passed: onboarding wizard, clinic team, automatic Meta Embedded Signup, encrypted WhatsApp credentials, webhook subscription, localization, live demo, Revenue Recovery, Cancellation Auto-Fill, and Voice-Note tracking.');fs.rmSync(dir,{recursive:true,force:true});

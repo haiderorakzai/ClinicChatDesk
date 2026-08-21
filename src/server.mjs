@@ -7,7 +7,7 @@ import { loadEnv, envBool } from './env.mjs';
 loadEnv();
 import { verifyPassword } from './crypto.mjs';
 import { clearCookie, getCurrentUser, logout, requireUser, sessionCookie, startSession } from './auth.mjs';
-import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupExpiredDemoClinics, cleanupSessions, connectWhatsAppManaged, createClinicWithOwner, createDemoClinic, createService, dashboard, dbInfo, findUserByEmail, getBusinessBundle, getConversationMessages, getOrCreateConversation, getUserById, getWhatsAppConnection, initDb, listAppointments, listCancellationOpportunities, listClinics, listConversations, listRecoveryCases, purgeOldMessages, setHandoff, superAutomationStats, superSetClinic, updateBusiness, updateConfig, updateService } from './db.mjs';
+import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupExpiredDemoClinics, cleanupSessions, connectWhatsAppManaged, createClinicWithOwner, createDemoClinic, createService, createStaff, dashboard, dbInfo, findUserByEmail, getBusinessBundle, getConversationMessages, getOnboardingState, getOrCreateConversation, getUserById, getWhatsAppConnection, initDb, listAppointments, listCancellationOpportunities, listClinics, listConversations, listStaff, listRecoveryCases, purgeOldMessages, setHandoff, superAutomationStats, superSetClinic, updateBusiness, updateConfig, updateOnboarding, updateService, updateStaff } from './db.mjs';
 import { processIncoming, transcribeAudio } from './ai.mjs';
 import { runAutomationTick } from './automation.mjs';
 import { handleWhatsAppPayload, verifyMetaSignature, verifyWebhook } from './whatsapp.mjs';
@@ -29,7 +29,7 @@ function send(res,status,data,extra={}){const isText=typeof data==='string';cons
 async function readRaw(req,limit=1_000_000){const chunks=[];let total=0;for await(const c of req){total+=c.length;if(total>limit)throw new Error('Request too large.');chunks.push(c);}return Buffer.concat(chunks);}
 async function parseBody(req,limit=1_000_000){const raw=await readRaw(req,limit);let json={};if(raw.length){try{json=JSON.parse(raw.toString('utf8'));}catch{throw new Error('Invalid JSON.');}}return{raw,json};}
 function sameOrigin(req){if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;const origin=req.headers.origin;if(!origin)return true;try{return new URL(origin).host===req.headers.host;}catch{return false;}}
-function staticFile(res,rel){rel=path.normalize(rel).replace(/^(\.\.[/\\])+/, '');const full=path.join(publicDir,rel);if(!full.startsWith(publicDir)||!fs.existsSync(full)||fs.statSync(full).isDirectory())return false;const ext=path.extname(full);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.ico':'image/x-icon'};res.writeHead(200,{'Content-Type':types[ext]||'application/octet-stream','Cache-Control':(ext==='.html'||ext==='.js')?'no-store':'public, max-age=3600',...securityHeaders()});fs.createReadStream(full).pipe(res);return true;}
+function staticFile(res,rel){rel=path.normalize(rel).replace(/^(\.\.[/\\])+/, '');const full=path.join(publicDir,rel);if(!full.startsWith(publicDir)||!fs.existsSync(full)||fs.statSync(full).isDirectory())return false;const ext=path.extname(full);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'};res.writeHead(200,{'Content-Type':types[ext]||'application/octet-stream','Cache-Control':(ext==='.html'||ext==='.js')?'no-store':'public, max-age=3600',...securityHeaders()});fs.createReadStream(full).pipe(res);return true;}
 function redirect(res,to){res.writeHead(302,{Location:to,'Cache-Control':'no-store',...securityHeaders()});res.end();}
 function authedClinic(req,res){cleanupExpiredDemoClinics();const u=requireUser(req,['clinic_admin']);if(!u){send(res,401,{error:'Authentication required.'});return null;}return u;}
 function authedSuper(req,res){const u=requireUser(req,['super_admin']);if(!u){send(res,401,{error:'Super admin required.'});return null;}return u;}
@@ -44,7 +44,7 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(!sameOrigin(req)) return send(res,403,{error:'Origin rejected.'});
-    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.5.4',demoMode:envBool('DEMO_MODE',true)});
+    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.6.0',demoMode:envBool('DEMO_MODE',true)});
     if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:metaPublicConfig()});
     if(req.method==='GET'&&url.pathname==='/api/me'){const u=getCurrentUser(req);return send(res,200,{user:u?getUserById(u.id):null});}
 
@@ -71,6 +71,11 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='POST'&&url.pathname==='/api/clinic/config'){const {json}=await parseBody(req);return send(res,200,{config:updateConfig(u.business_id,json)});}
       if(req.method==='POST'&&url.pathname==='/api/clinic/services'){const {json}=await parseBody(req);return send(res,201,{service:createService(u.business_id,json)});}
       const sm=url.pathname.match(/^\/api\/clinic\/services\/([^/]+)$/);if(req.method==='POST'&&sm){const {json}=await parseBody(req);return send(res,200,{service:updateService(u.business_id,sm[1],json)});}
+      if(req.method==='GET'&&url.pathname==='/api/clinic/staff')return send(res,200,{staff:listStaff(u.business_id)});
+      if(req.method==='POST'&&url.pathname==='/api/clinic/staff'){const {json}=await parseBody(req);return send(res,201,{staff:createStaff(u.business_id,json)});}
+      const stm=url.pathname.match(/^\/api\/clinic\/staff\/([^/]+)$/);if(req.method==='POST'&&stm){const {json}=await parseBody(req);return send(res,200,{staff:updateStaff(u.business_id,stm[1],json)});}
+      if(req.method==='GET'&&url.pathname==='/api/clinic/onboarding')return send(res,200,getOnboardingState(u.business_id));
+      if(req.method==='POST'&&url.pathname==='/api/clinic/onboarding'){const {json}=await parseBody(req);return send(res,200,updateOnboarding(u.business_id,json));}
       if(req.method==='GET'&&url.pathname==='/api/clinic/conversations')return send(res,200,{conversations:listConversations(u.business_id)});
       const mm=url.pathname.match(/^\/api\/clinic\/conversations\/([^/]+)\/messages$/);if(req.method==='GET'&&mm)return send(res,200,{messages:getConversationMessages(u.business_id,mm[1])});
       const hm=url.pathname.match(/^\/api\/clinic\/conversations\/([^/]+)\/handoff$/);if(req.method==='POST'&&hm){const {json}=await parseBody(req);setHandoff(u.business_id,hm[1],!!json.enabled);return send(res,200,{ok:true});}
@@ -117,6 +122,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/super-admin'){const u=getCurrentUser(req);if(!u)return redirect(res,'/login');if(u.role!=='super_admin')return redirect(res,'/app');return staticFile(res,'super.html')||send(res,404,'Not found');}
       if(url.pathname==='/privacy')return staticFile(res,'privacy.html')||send(res,404,'Not found');
       if(url.pathname==='/terms')return staticFile(res,'terms.html')||send(res,404,'Not found');
+      if(url.pathname==='/pricing')return staticFile(res,'pricing.html')||send(res,404,'Not found');
       if(url.pathname==='/meta/embedded-signup/callback')return redirect(res,'/app?whatsapp=return');
       if(staticFile(res,url.pathname.slice(1)))return;
     }
