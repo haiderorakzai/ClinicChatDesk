@@ -1,0 +1,11 @@
+ClinicChatDesk v2.6.0 — Update Guide
+
+1. Extract ClinicChatDesk-v2.6-UPDATE-ONLY.zip.
+2. Upload ALL extracted files/folders to the ROOT of the existing GitHub ClinicChatDesk repository, preserving folder structure and replacing matching files.
+3. Do not delete the Railway /data volume and do not change APP_ENCRYPTION_KEY.
+4. No new Railway environment variables are required for v2.6. Keep all existing Meta/OpenAI variables exactly as they are.
+5. Let Railway auto-deploy.
+6. Verify https://clinicchatdesk.com/health returns version 2.6.0.
+7. Hard-refresh the browser and test: homepage, /pricing, signup, Setup wizard, Team, Live Test, and WhatsApp page.
+
+This update contains and preserves the v2.5.1–v2.5.4 Meta SDK/CSP fixes.

@@ -394,3 +394,7 @@ Keep `META_APP_SECRET` server-side only. The browser receives only the App ID an
 The clinic dashboard now launches the Coexistence flow for **Connect existing WhatsApp Business** by passing `whatsapp_business_app_onboarding`, while **Set up a new number** launches standard Embedded Signup. The backend exchanges the one-time code, encrypts the business token, completes new-number registration when required, and subscribes the WABA to the existing `/webhook/whatsapp` endpoint.
 
 See `META_EMBEDDED_SIGNUP_GUIDE.md` and `V2.5_UPDATE_GUIDE.txt`.
+
+## v2.6 professional UI and onboarding
+
+No new environment variables are required. Deploy the code update over the existing v2.5.4 installation, keep the Railway persistent `/data` volume attached, and do not rotate `APP_ENCRYPTION_KEY`. The database migration safely adds onboarding fields and a per-clinic staff table on first boot. After deployment, confirm `/health` reports `2.6.0`, then test `/`, `/pricing`, `/signup`, the Setup wizard, Team area, Live Test and WhatsApp page.

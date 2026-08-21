@@ -1,4 +1,16 @@
-# ClinicChatDesk SaaS v2.5.0
+# ClinicChatDesk SaaS v2.6.0
+
+**v2.6 is the customer-onboarding and professional UI release.** It keeps every v2.5.4 Meta Embedded Signup/CSP fix and adds a polished marketing site, a guided 7-step clinic setup wizard, setup progress, doctors/staff management, a dedicated pricing page, improved demo/sales CTAs, favicon/brand icon support, and a more professional clinic dashboard.
+
+## v2.6 highlights
+- Professional public website built for client demos and sales calls.
+- Guided setup: Clinic Details → Services → Doctors & Staff → Hours → AI → WhatsApp → Test & Launch.
+- New Team area and per-clinic staff records.
+- Setup completion/progress card on the dashboard.
+- `GET/POST /api/clinic/onboarding` and clinic staff APIs.
+- New `/pricing` page and expanded FAQ on the homepage.
+- New ClinicChatDesk icon/favicons and improved dashboard navigation.
+- Preserves automatic Meta Embedded Signup, secure token exchange/encryption, WABA webhook subscription, Revenue Recovery, localization and the live demo.
 
 **v2.5 adds automatic Meta Embedded Signup inside the clinic dashboard.** A clinic can click **Connect existing WhatsApp Business** (Coexistence) or **Set up a new number**, complete Meta's official signup window, and ClinicChatDesk automatically captures the authorized WABA/phone IDs, exchanges the one-time authorization code server-side, encrypts the business token, completes new-number registration when needed, subscribes the WABA to your existing webhook, and shows **Connected ✓**.
 

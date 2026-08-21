@@ -117,3 +117,17 @@ The normal client path is now self-service:
 7. ClinicChatDesk automatically finishes the API connection and shows **Connected ✓**.
 
 The clinic must never be asked to copy a WABA ID, Phone Number ID, access token, App Secret or webhook URL. Meta billing/payment details, when requested by Meta, are handled by Meta and are not stored by ClinicChatDesk.
+
+## v2.6 guided onboarding
+
+New clinic accounts now land in a 7-step setup experience:
+
+1. Clinic details and localization
+2. Services and prices
+3. Doctors and staff
+4. Working hours
+5. AI receptionist settings
+6. WhatsApp connection
+7. Live test and launch
+
+The clinic can skip WhatsApp temporarily while Meta onboarding/review is pending, then return later from the dashboard. The Overview page shows setup completion until the clinic finishes onboarding.
