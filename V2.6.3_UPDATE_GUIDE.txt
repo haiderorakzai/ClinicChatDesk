@@ -1,0 +1,23 @@
+ClinicChatDesk v2.6.3 — Modal UI + Phone Input
+
+WHAT CHANGED
+- Replaced clinic-facing browser prompt(), alert() and confirm() dialogs with branded ClinicChatDesk modals/toasts.
+- Add/Edit team member now uses an in-app modal.
+- Add service now uses an in-app modal with name, price and duration.
+- Appointment cancellation and WhatsApp disconnect use branded confirmation dialogs.
+- Save/success/error feedback uses ClinicChatDesk toast notifications instead of browser alerts.
+- Phone country code now uses a branded in-page picker instead of the browser datalist popup.
+- Added a real Phone number field beside Phone country code on the Live Demo.
+- Reworked phone code + phone number layout on Signup, Setup and Business Knowledge.
+- Demo phone is normalized and stored using the selected country code.
+- Includes the v2.6.1 CSS/cache fix and v2.6.2 WhatsApp .opus voice-note transcription fix.
+
+DEPLOY
+1. Extract ClinicChatDesk-v2.6.3-UPDATE-ONLY.zip.
+2. Upload all extracted files/folders to the ROOT of your existing GitHub repository, preserving folder paths.
+3. Let Railway auto-deploy.
+4. Check https://clinicchatdesk.com/health — it should show version 2.6.3.
+5. Hard refresh once (Ctrl+F5).
+
+NO NEW RAILWAY VARIABLES ARE REQUIRED.
+Do not change APP_ENCRYPTION_KEY and do not delete or replace the Railway /data volume.
