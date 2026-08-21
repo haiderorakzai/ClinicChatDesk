@@ -11,12 +11,21 @@
     if(value && byCode[value])el.value=value; else if(value)el.value='OTHER';
   }
   function fillDatalist(id,values){let d=document.getElementById(id);if(!d){d=document.createElement('datalist');d.id=id;document.body.appendChild(d)}d.innerHTML=values.map(v=>`<option value="${v}"></option>`).join('');}
+  function esc(s=''){return String(s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
+  function enhanceDialInput(input){
+    if(!input||input.dataset.dialPicker==='1')return;input.dataset.dialPicker='1';input.readOnly=true;input.removeAttribute('list');input.classList.add('dial-input');
+    const parent=input.parentElement,shell=document.createElement('div');shell.className='dial-picker';parent.insertBefore(shell,input);shell.appendChild(input);
+    const arrow=document.createElement('button');arrow.type='button';arrow.className='dial-toggle';arrow.setAttribute('aria-label','Choose phone country code');arrow.innerHTML='⌄';shell.appendChild(arrow);
+    const menu=document.createElement('div');menu.className='dial-menu hidden';menu.innerHTML=`<div class="dial-menu-head">Phone country code</div><div class="dial-menu-list">${countries.filter(x=>x.dial).map(x=>`<button type="button" class="dial-option" data-dial="${esc(x.dial)}"><span>${esc(x.name)}</span><strong>${esc(x.dial)}</strong></button>`).join('')}</div>`;shell.appendChild(menu);
+    const close=()=>menu.classList.add('hidden'),toggle=e=>{e.stopPropagation();document.querySelectorAll('.dial-menu').forEach(x=>{if(x!==menu)x.classList.add('hidden')});menu.classList.toggle('hidden')};
+    input.addEventListener('click',toggle);arrow.addEventListener('click',toggle);menu.addEventListener('click',e=>e.stopPropagation());menu.querySelectorAll('.dial-option').forEach(b=>b.addEventListener('click',()=>{input.value=b.dataset.dial;input.dispatchEvent(new Event('change',{bubbles:true}));close()}));
+    document.addEventListener('click',close);
+  }
   function browserTimezone(){try{return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'}catch{return 'UTC'}}
   function bind({country,dial,currency,timezone,initialCountry='',initialDial='',initialCurrency='',initialTimezone=''}){
     fillCountrySelect(country,initialCountry||'US');
-    fillDatalist('dialCodeList',[...new Set(countries.map(x=>x.dial).filter(Boolean))]);
     fillDatalist('currencyCodeList',currencies);
-    if(dial){dial.setAttribute('list','dialCodeList');dial.value=initialDial||byCode[country?.value]?.dial||''}
+    if(dial){dial.value=initialDial||byCode[country?.value]?.dial||'';enhanceDialInput(dial)}
     if(currency){currency.setAttribute('list','currencyCodeList');currency.value=initialCurrency||byCode[country?.value]?.currency||'USD'}
     if(timezone)timezone.value=initialTimezone||browserTimezone();
     if(country)country.addEventListener('change',()=>{const m=byCode[country.value];if(!m)return;if(dial&&m.dial)dial.value=m.dial;if(currency&&m.currency)currency.value=m.currency;});
