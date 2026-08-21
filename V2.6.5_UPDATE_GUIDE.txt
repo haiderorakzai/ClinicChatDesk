@@ -1,0 +1,14 @@
+ClinicChatDesk v2.6.5
+
+Changes:
+- Full ISO country/territory list in country and phone-code pickers.
+- Searchable phone country-code picker.
+- Currency and timezone are proper dropdown lists wherever localization is configured.
+- Business Knowledge now includes “Anything else the AI should know” and saves it securely per clinic.
+- AI prompt uses these clinic notes while preserving receptionist safety rules.
+- “Lost Lead Recovery” is presented to users as “Patient Follow-up”.
+- “Revenue Attribution” is presented as “Recovered Revenue” with simpler explanations.
+- Landing-page product mockup is aligned (no tilt).
+
+Deployment:
+Upload the UPDATE-ONLY package contents into the existing GitHub repository, preserving paths. Railway can redeploy automatically. No new Railway variables are required. Do not change APP_ENCRYPTION_KEY or the /data volume.
