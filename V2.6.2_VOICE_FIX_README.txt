@@ -1,0 +1,12 @@
+ClinicChatDesk v2.6.2 — WhatsApp .opus voice-note fix
+
+Fixes Live Test uploads such as PTT-....opus. WhatsApp voice notes are commonly Opus audio in an Ogg container. The OpenAI transcription endpoint accepts OGG uploads, so ClinicChatDesk now presents .opus files as .ogg without re-encoding the audio.
+
+Also improves the Live Test error response so production no longer shows only “Something went wrong.” for transcription failures.
+
+Upload these files to the matching GitHub paths:
+- package.json
+- src/ai.mjs
+- src/server.mjs
+
+After Railway deploys, /health should report 2.6.2.
