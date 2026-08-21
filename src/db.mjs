@@ -74,6 +74,7 @@ export function initDb() {
       languages_json TEXT NOT NULL DEFAULT '["English"]',
       opening_hours_json TEXT NOT NULL DEFAULT '{}',
       faq_json TEXT NOT NULL DEFAULT '[]',
+      extra_ai_notes TEXT NOT NULL DEFAULT '',
       auto_reply INTEGER NOT NULL DEFAULT 1,
       booking_enabled INTEGER NOT NULL DEFAULT 1,
       safety_handoff INTEGER NOT NULL DEFAULT 1,
@@ -267,6 +268,7 @@ export function initDb() {
   ensureColumn('businesses','demo_expires_at','TEXT');
   ensureColumn('businesses','onboarding_step','INTEGER NOT NULL DEFAULT 1');
   ensureColumn('businesses','onboarding_complete','INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('business_configs','extra_ai_notes',"TEXT NOT NULL DEFAULT ''");
   ensureColumn('business_configs','lost_lead_recovery','INTEGER NOT NULL DEFAULT 1');
   ensureColumn('business_configs','recovery_delay_minutes','INTEGER NOT NULL DEFAULT 120');
   ensureColumn('business_configs','recovery_max_attempts','INTEGER NOT NULL DEFAULT 1');
@@ -417,9 +419,9 @@ export function updateConfig(businessId, patch={}) {
   const hours=patch.opening_hours && typeof patch.opening_hours==='object'?patch.opening_hours:cur.opening_hours;
   const faqs=Array.isArray(patch.faqs)?patch.faqs.slice(0,100):cur.faqs;
   const bounded=(v,current,min,max)=>Math.max(min,Math.min(max,Number(v ?? current)));
-  db.prepare(`UPDATE business_configs SET ai_name=?,greeting=?,tone=?,languages_json=?,opening_hours_json=?,faq_json=?,auto_reply=?,booking_enabled=?,safety_handoff=?,lost_lead_recovery=?,recovery_delay_minutes=?,recovery_max_attempts=?,cancellation_autofill=?,cancellation_max_offers=?,voice_notes_enabled=?,updated_at=? WHERE business_id=?`)
+  db.prepare(`UPDATE business_configs SET ai_name=?,greeting=?,tone=?,languages_json=?,opening_hours_json=?,faq_json=?,extra_ai_notes=?,auto_reply=?,booking_enabled=?,safety_handoff=?,lost_lead_recovery=?,recovery_delay_minutes=?,recovery_max_attempts=?,cancellation_autofill=?,cancellation_max_offers=?,voice_notes_enabled=?,updated_at=? WHERE business_id=?`)
     .run(String(patch.ai_name ?? cur.ai_name).trim()||cur.ai_name,String(patch.greeting ?? cur.greeting).trim()||cur.greeting,String(patch.tone ?? cur.tone).trim()||cur.tone,
-      JSON.stringify(langs),JSON.stringify(hours),JSON.stringify(faqs),
+      JSON.stringify(langs),JSON.stringify(hours),JSON.stringify(faqs),String(patch.extra_ai_notes ?? cur.extra_ai_notes ?? '').trim().slice(0,12000),
       patch.auto_reply===undefined?(cur.auto_reply?1:0):(patch.auto_reply?1:0), patch.booking_enabled===undefined?(cur.booking_enabled?1:0):(patch.booking_enabled?1:0), patch.safety_handoff===undefined?(cur.safety_handoff?1:0):(patch.safety_handoff?1:0),
       patch.lost_lead_recovery===undefined?(cur.lost_lead_recovery?1:0):(patch.lost_lead_recovery?1:0), bounded(patch.recovery_delay_minutes,cur.recovery_delay_minutes,15,1440), bounded(patch.recovery_max_attempts,cur.recovery_max_attempts,1,3),
       patch.cancellation_autofill===undefined?(cur.cancellation_autofill?1:0):(patch.cancellation_autofill?1:0), bounded(patch.cancellation_max_offers,cur.cancellation_max_offers,1,20), patch.voice_notes_enabled===undefined?(cur.voice_notes_enabled?1:0):(patch.voice_notes_enabled?1:0), now(),businessId);
