@@ -1,0 +1,10 @@
+ClinicChatDesk v2.6.7
+
+Fixes:
+- Business Knowledge opening hours now uses the new Open/Closed + Opens + Closes dropdown design.
+- Live Demo no longer writes 'Preparing demo...' into the phone country-code control.
+- Demo loading state now stays inside the Launch button with a clean spinner.
+
+Deploy:
+Upload the update-only files to the matching GitHub paths and let Railway redeploy.
+Check /health for version 2.6.7, then hard refresh once.
