@@ -44,7 +44,7 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(!sameOrigin(req)) return send(res,403,{error:'Origin rejected.'});
-    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.6.1',demoMode:envBool('DEMO_MODE',true)});
+    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.6.2',demoMode:envBool('DEMO_MODE',true)});
     if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:metaPublicConfig()});
     if(req.method==='GET'&&url.pathname==='/api/me'){const u=getCurrentUser(req);return send(res,200,{user:u?getUserById(u.id):null});}
 
@@ -97,8 +97,17 @@ const server=http.createServer(async(req,res)=>{
         const bundle=getBusinessBundle(u.business_id),cfg=bundle.config;if(!cfg.voice_notes_enabled)return send(res,400,{error:'Voice-note receptionist is disabled in AI Settings.'});
         if(bundle.business?.is_demo && automationStats(u.business_id).voiceNotes>=3)return send(res,429,{error:'This demo allows up to 3 voice-note tests. Start your own trial for continued testing.'});
         const raw=await readRaw(req,16*1024*1024);if(!raw.length)return send(res,400,{error:'Choose an audio file first.'});
-        const mime=String(req.headers['content-type']||'audio/ogg').split(';')[0];const filename=decodeURIComponent(url.searchParams.get('filename')||'voice-note.ogg');
-        const transcript=await transcribeAudio({buffer:raw,mimeType:mime,filename,businessId:u.business_id});const {customer,conversation}=getOrCreateConversation(u.business_id,'+10000000001','Voice Demo Patient','web');const result=await processIncoming({businessId:u.business_id,customer,conversation,text:transcript,messageMeta:{message_type:'voice',transcription_status:'completed',local_demo:true}});return send(res,200,{transcript,...result});
+        const mime=String(req.headers['content-type']||'audio/ogg').split(';')[0];let filename=decodeURIComponent(url.searchParams.get('filename')||'voice-note.ogg');
+        if(/\.opus$/i.test(filename))filename=filename.replace(/\.opus$/i,'.ogg');
+        try{
+          const transcript=await transcribeAudio({buffer:raw,mimeType:mime,filename,businessId:u.business_id});if(!transcript)return send(res,422,{error:'The voice note was received but no speech could be transcribed. Try a clearer recording.'});
+          const {customer,conversation}=getOrCreateConversation(u.business_id,'+10000000001','Voice Demo Patient','web');const result=await processIncoming({businessId:u.business_id,customer,conversation,text:transcript,messageMeta:{message_type:'voice',transcription_status:'completed',local_demo:true}});return send(res,200,{transcript,...result});
+        }catch(e){
+          console.error('Voice-note test error:',e.message);
+          const msg=String(e.message||'');
+          if(/transcription error 4\d\d/i.test(msg))return send(res,422,{error:'This audio file could not be transcribed. WhatsApp .opus files are handled as OGG in v2.6.2; if it still fails, try an OGG, MP3, M4A, WAV, or WEBM file.'});
+          return send(res,502,{error:'Voice-note transcription failed. Check the OpenAI transcription model/API configuration and Railway logs for the exact provider error.'});
+        }
       }
     }
 

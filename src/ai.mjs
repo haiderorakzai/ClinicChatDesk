@@ -55,8 +55,15 @@ async function demoReply({businessId,customerId,text}){
 
 export async function transcribeAudio({buffer,mimeType='audio/ogg',filename='voice-note.ogg',businessId=null}){
   if(!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required for voice-note transcription.');
+  let safeMime=String(mimeType||'audio/ogg').split(';')[0].trim().toLowerCase();
+  let safeName=String(filename||'voice-note.ogg').trim()||'voice-note.ogg';
+  // WhatsApp exports voice notes as .opus, usually inside an Ogg/Opus container.
+  // OpenAI transcription accepts OGG but does not list .opus as an upload extension,
+  // so present those files as .ogg while keeping the original audio bytes unchanged.
+  if(/\.opus$/i.test(safeName)){safeName=safeName.replace(/\.opus$/i,'.ogg');if(!safeMime||safeMime==='application/octet-stream'||safeMime==='audio/opus')safeMime='audio/ogg';}
+  if(safeMime==='audio/ogg; codecs=opus'||safeMime==='audio/ogg;codecs=opus')safeMime='audio/ogg';
   const form=new FormData();
-  form.append('file',new Blob([buffer],{type:mimeType||'audio/ogg'}),filename||'voice-note.ogg');
+  form.append('file',new Blob([buffer],{type:safeMime||'audio/ogg'}),safeName);
   form.append('model',process.env.OPENAI_TRANSCRIBE_MODEL||'gpt-4o-mini-transcribe');
   const resp=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`},body:form});
   if(!resp.ok) throw new Error(`OpenAI transcription error ${resp.status}: ${await resp.text()}`);
