@@ -1,7 +1,7 @@
 const qs=s=>document.querySelector(s), qsa=s=>[...document.querySelectorAll(s)];
 async function api(url,opts={}){const headers={...(opts.headers||{})};if(opts.body && typeof opts.body==='string' && !headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers});if(r.status===401){location.href='/login';throw new Error('Authentication required')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed');return j}
 async function post(url,data){return api(url,{method:'POST',body:JSON.stringify(data)})}
-let data=null,currentConv=null,localizationBound=false;
+let data=null,currentConv=null,localizationBound=false,publicConfig=null,metaSdkPromise=null;
 const days=['sun','mon','tue','wed','thu','fri','sat'];
 function esc(s=''){return String(s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
 function money(v,currency){const n=Number(v||0);try{return new Intl.NumberFormat(undefined,{style:'currency',currency:currency||'USD',maximumFractionDigits:0}).format(n)}catch{return `${currency||''} ${n.toFixed(0)}`}}
@@ -22,7 +22,7 @@ function render(){
   qs('#recoveryEnabled').checked=!!c.lost_lead_recovery;qs('#recoveryDelay').value=String(c.recovery_delay_minutes||120);qs('#cancelAutoFill').checked=!!c.cancellation_autofill;qs('#cancelMaxOffers').value=String(c.cancellation_max_offers||5);qs('#voiceNotesEnabled').checked=!!c.voice_notes_enabled;
   qs('#hours').innerHTML=days.map(d=>{const r=c.opening_hours?.[d]||['',''];return `<div style="display:grid;grid-template-columns:70px 1fr 1fr;gap:8px;margin:8px 0;align-items:center"><strong style="text-transform:capitalize">${d}</strong><input data-day="${d}" data-i="0" value="${esc(r?.[0]||'')}" placeholder="09:00"><input data-day="${d}" data-i="1" value="${esc(r?.[1]||'')}" placeholder="18:00"></div>`}).join('');
   qs('#faqs').value=(c.faqs||[]).map(x=>`${x.q||x.question||''} | ${x.a||x.answer||''}`).join('\n');renderServices();
-  qs('#waStatus').innerHTML=b.is_demo?`<span class="status warn">Demo sandbox</span><h3>WhatsApp connection is disabled in the public demo</h3><p style="color:var(--muted)">The chat and booking workflow is fully testable here. Create a clinic workspace to connect a real WhatsApp Business number.</p><a class="btn brand small" href="/signup">Create clinic workspace</a>`:(w?.status==='connected'?`<span class="status">Connected</span><h3 style="margin-bottom:5px">${esc(w.display_number||'WhatsApp number')}</h3><p style="color:var(--muted)">Phone Number ID: ${esc(w.phone_number_id||'')}</p><p class="kpi-note">Voice-note reception and revenue-recovery messages use this same clinic number.</p>`:`<span class="status warn">Not connected</span><h3>WhatsApp onboarding required</h3><p style="color:var(--muted)">Contact the ClinicChatDesk platform team to connect your business number.</p>`);
+  renderWhatsApp();
 }
 function renderServices(){const cur=data?.business?.currency||'USD';qs('#services').innerHTML=(data.services||[]).map(s=>`<div class="service-row"><input data-s="${s.id}" data-k="name" value="${esc(s.name)}"><input data-s="${s.id}" data-k="price" type="number" value="${s.price}"><span class="currency-chip">${esc(cur)}</span><input data-s="${s.id}" data-k="duration_minutes" type="number" value="${s.duration_minutes}"><button class="btn ghost small save-service" data-id="${s.id}">Save</button></div>`).join('')||'<p style="color:var(--muted)">No services yet.</p>';qsa('.save-service').forEach(b=>b.onclick=async()=>{const id=b.dataset.id,obj={};qsa(`[data-s="${id}"]`).forEach(i=>obj[i.dataset.k]=i.type==='number'?Number(i.value):i.value);await post('/api/clinic/services/'+id,obj);await load();});}
 qs('#addService').onclick=async()=>{const name=prompt('Service name');if(!name)return;const price=Number(prompt('Price')||0);const duration_minutes=Number(prompt('Duration in minutes')||30);await post('/api/clinic/services',{name,price,duration_minutes});await load();page('knowledge')};
@@ -43,4 +43,94 @@ async function sendTest(text){if(!text.trim())return;const box=qs('#testChat');b
 qs('#testSend').onclick=()=>sendTest(qs('#testInput').value);qs('#testInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendTest(e.target.value)});qsa('.quick').forEach(b=>b.onclick=()=>sendTest(b.textContent));
 qs('#voiceSend').onclick=async()=>{const f=qs('#voiceFile').files?.[0];if(!f){alert('Choose an audio file first.');return}qs('#voiceSend').disabled=true;qs('#voiceResult').textContent='Transcribing and processing…';try{const r=await api(`/api/clinic/test-voice?filename=${encodeURIComponent(f.name)}`,{method:'POST',headers:{'Content-Type':f.type||'audio/ogg'},body:f});qs('#voiceResult').innerHTML=`<strong>Transcript:</strong> ${esc(r.transcript)}<br><strong>AI:</strong> ${esc(r.reply||'No automatic reply — human takeover or AI pause may be active.')}`;const box=qs('#testChat');box.insertAdjacentHTML('beforeend',`<div class="msg user"><div class="voice-chip">🎤 Voice note transcript</div>${esc(r.transcript)}</div>`);if(r.reply)box.insertAdjacentHTML('beforeend',`<div class="msg assistant">${esc(r.reply)}</div>`);await load();}catch(e){qs('#voiceResult').textContent=e.message}finally{qs('#voiceSend').disabled=false}};
 
-async function load(){data=await api('/api/clinic/dashboard');render()}load();
+function waShowError(message=''){
+  const box=qs('#waError');if(!box)return;box.textContent=message;box.classList.toggle('hidden',!message);
+}
+function waProgress(show,title='Connecting WhatsApp…',text='Complete the Meta window. ClinicChatDesk will finish the connection automatically.'){
+  const box=qs('#waProgress');if(!box)return;box.classList.toggle('hidden',!show);qs('#waProgressTitle').textContent=title;qs('#waProgressText').textContent=text;
+}
+function formatWhen(v){if(!v)return '';try{return new Date(v).toLocaleString()}catch{return ''}}
+function renderWhatsApp(){
+  if(!data||!qs('#waStatus'))return;
+  const b=data.business,w=data.whatsapp||{},m=publicConfig?.meta||{};const status=String(w.status||'not_connected');
+  waShowError('');waProgress(false);
+  if(b.is_demo){
+    qs('#waStatus').innerHTML=`<span class="status warn">Demo sandbox</span><h3>Real WhatsApp is disabled in the public demo</h3><p style="color:var(--muted)">Create a clinic workspace to connect an actual WhatsApp Business number.</p>`;
+    qs('#waActions').innerHTML='<a class="btn brand" href="/signup">Create clinic workspace</a>';return;
+  }
+  if(status==='connected'){
+    const title=w.verified_name||w.display_number||'WhatsApp connected';
+    qs('#waStatus').innerHTML=`<div class="wa-connected-head"><div><span class="status">Connected ✓</span><h2>${esc(title)}</h2><p>${esc(w.display_number||'')}</p></div><div class="wa-live-dot"><i></i> AI channel live</div></div><div class="wa-meta-grid"><div><span>Connection</span><strong>${w.connection_source==='embedded_signup'?'Meta Embedded Signup':'Managed connection'}</strong></div><div><span>Last checked</span><strong>${esc(formatWhen(w.last_verified_at)||'Not checked yet')}</strong></div></div><p class="kpi-note">Incoming patient messages on this number are routed to this clinic’s AI receptionist and dashboard.</p>`;
+    qs('#waActions').innerHTML='<button id="waVerify" class="btn ghost">Check connection</button><button id="waReconnect" class="btn ghost">Reconnect existing number</button><button id="waDisconnect" class="btn danger">Disconnect</button>';
+    qs('#waVerify').onclick=verifyWhatsApp;qs('#waReconnect').onclick=()=>startWhatsAppSignup('existing');qs('#waDisconnect').onclick=disconnectWhatsApp;return;
+  }
+  if(status==='attention'||status==='pending'){
+    qs('#waStatus').innerHTML=`<span class="status warn">${status==='pending'?'Finishing setup':'Needs attention'}</span><h3>${esc(w.display_number||'WhatsApp authorization received')}</h3><p style="color:var(--muted)">${esc(w.last_error||'Meta authorized the account, but ClinicChatDesk still needs to finish the webhook connection.')}</p>`;
+    qs('#waActions').innerHTML=`${w.access_token_configured?'<button id="waRetry" class="btn brand">Retry connection</button>':''}<button id="waReconnect" class="btn ghost">Reconnect existing number</button>`;
+    const r=qs('#waRetry');if(r)r.onclick=retryWhatsApp;qs('#waReconnect').onclick=()=>startWhatsAppSignup('existing');return;
+  }
+  qs('#waStatus').innerHTML=`<span class="status warn">Not connected</span><h2>Turn your clinic’s WhatsApp into an AI front desk</h2><p style="color:var(--muted);max-width:650px">Connect through Meta’s secure signup. You can choose an eligible existing WhatsApp Business App number or set up a new number. ClinicChatDesk completes the API connection automatically.</p>`;
+  if(!m.ready){
+    qs('#waActions').innerHTML='<button class="btn brand" disabled>Connect WhatsApp</button><span class="kpi-note">Platform Meta configuration is not complete yet.</span>';
+  }else qs('#waActions').innerHTML='<button id="waConnectExisting" class="btn brand wa-connect-btn">Connect existing WhatsApp Business <span>→</span></button><button id="waConnectNew" class="btn ghost">Set up a new number</button>';
+  const ce=qs('#waConnectExisting'),cn=qs('#waConnectNew');if(ce)ce.onclick=()=>startWhatsAppSignup('existing');if(cn)cn.onclick=()=>startWhatsAppSignup('new');
+}
+
+async function loadMetaSdk(){
+  const m=publicConfig?.meta||{};if(!m.appId)throw new Error('Meta App ID is not configured.');
+  if(window.FB){FB.init({appId:m.appId,cookie:true,xfbml:false,version:m.graphVersion||'v26.0'});return FB;}
+  if(metaSdkPromise)return metaSdkPromise;
+  metaSdkPromise=new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error('Meta login could not be loaded. Check your browser privacy/ad-blocking settings and try again.')),12000);
+    window.fbAsyncInit=()=>{clearTimeout(timeout);try{FB.init({appId:m.appId,cookie:true,xfbml:false,version:m.graphVersion||'v26.0'});resolve(FB)}catch(e){reject(e)}};
+    const script=document.createElement('script');script.async=true;script.defer=true;script.crossOrigin='anonymous';script.src='https://connect.facebook.net/en_US/sdk.js';script.onerror=()=>{clearTimeout(timeout);reject(new Error('Could not load Meta login.'))};document.head.appendChild(script);
+  });
+  return metaSdkPromise;
+}
+
+function normalizeMetaSession(raw){
+  let payload=raw;try{if(typeof payload==='string')payload=JSON.parse(payload)}catch{return null}
+  const items=Array.isArray(payload)?payload:[payload];
+  for(const item of items){if(item?.type!=='WA_EMBEDDED_SIGNUP')continue;const ev=String(item.event||'');if(ev.startsWith('FINISH'))return{kind:'finish',data:item.data||{}};if(ev==='CANCEL'||ev==='ERROR')return{kind:'stop',data:item.data||{},event:ev};}
+  return null;
+}
+
+async function startWhatsAppSignup(mode='existing'){
+  if(data?.business?.is_demo)return;
+  const m=publicConfig?.meta||{};if(!m.ready){waShowError('ClinicChatDesk’s Meta connection is not configured on the server yet.');return}
+  waShowError('');waProgress(true,'Opening Meta…',mode==='existing'?'Choose the option to connect the clinic’s existing WhatsApp Business App number.':'Choose the clinic business and set up the new WhatsApp number in Meta.');
+  let authCode='',sessionData=null,submitted=false,forceTimer=null;
+  const allowed=new Set(['https://www.facebook.com','https://web.facebook.com','https://business.facebook.com']);
+  const cleanup=()=>{window.removeEventListener('message',onMessage);if(forceTimer)clearTimeout(forceTimer)};
+  const complete=async(force=false)=>{
+    if(submitted||!authCode||(!sessionData&&!force))return;submitted=true;cleanup();
+    waProgress(true,'Securing the connection…','ClinicChatDesk is exchanging Meta’s one-time code, verifying the selected number and subscribing your webhook.');
+    try{
+      await post('/api/clinic/whatsapp/embedded/complete',{code:authCode,waba_id:sessionData?.waba_id||'',phone_number_id:sessionData?.phone_number_id||'',business_id:sessionData?.business_id||'',onboarding_mode:mode});
+      authCode='';await load();page('whatsapp');waProgress(false);
+    }catch(e){authCode='';waProgress(false);waShowError(e.message);await load().catch(()=>{});page('whatsapp')}
+  };
+  const onMessage=e=>{if(!allowed.has(e.origin))return;const x=normalizeMetaSession(e.data);if(!x)return;if(x.kind==='finish'){sessionData=x.data;complete(false)}else{cleanup();waProgress(false);waShowError(x.event==='CANCEL'?'WhatsApp connection was cancelled in Meta.':'Meta could not complete WhatsApp signup.')}};
+  window.addEventListener('message',onMessage);
+  try{
+    // FB.login must run directly from the user's click to avoid popup blockers.
+    // The SDK is preloaded when the dashboard starts; if it is still loading,
+    // ask for a second click instead of launching an unsolicited popup later.
+    if(!window.FB){cleanup();waProgress(false);waShowError('Meta login is still loading. Please wait a moment and click Connect WhatsApp again.');loadMetaSdk().catch(()=>{});return}
+    FB.init({appId:m.appId,cookie:true,xfbml:false,version:m.graphVersion||'v26.0'});
+    const extras={setup:{},version:m.esVersion||'v4',sessionInfoVersion:String(m.sessionInfoVersion||'3')};const featureType=mode==='existing'?'whatsapp_business_app_onboarding':(m.featureType||'');if(featureType)extras.featureType=featureType;
+    FB.login(response=>{
+      authCode=response?.authResponse?.code||'';
+      if(!authCode){cleanup();waProgress(false);waShowError('Meta did not return an authorization code. Please complete the signup and try again.');return}
+      // Session info normally arrives through postMessage. If Meta omits it,
+      // the backend can discover a single authorized WABA/phone from the token.
+      forceTimer=setTimeout(()=>complete(true),1800);complete(false);
+    },{config_id:m.embeddedSignupConfigId,response_type:'code',override_default_response_type:true,extras});
+  }catch(e){cleanup();waProgress(false);waShowError(e.message)}
+}
+
+async function verifyWhatsApp(){waShowError('');waProgress(true,'Checking Meta connection…','Verifying the phone number and webhook subscription.');try{await post('/api/clinic/whatsapp/verify',{});await load();page('whatsapp')}catch(e){waShowError(e.message);await load().catch(()=>{});page('whatsapp')}finally{waProgress(false)}}
+async function retryWhatsApp(){waShowError('');waProgress(true,'Retrying connection…','Reusing the secure authorization already stored for this clinic.');try{await post('/api/clinic/whatsapp/retry',{});await load();page('whatsapp')}catch(e){waShowError(e.message);await load().catch(()=>{});page('whatsapp')}finally{waProgress(false)}}
+async function disconnectWhatsApp(){if(!confirm('Disconnect this clinic from ClinicChatDesk WhatsApp automation? The clinic’s WhatsApp account itself will not be deleted.'))return;waShowError('');waProgress(true,'Disconnecting…','Removing ClinicChatDesk’s local connection and webhook subscription.');try{const r=await post('/api/clinic/whatsapp/disconnect',{});await load();page('whatsapp');if(r.warning)alert('Disconnected from ClinicChatDesk. Meta also returned a warning while removing the webhook subscription: '+r.warning)}catch(e){waShowError(e.message)}finally{waProgress(false)}}
+
+async function load(){if(!publicConfig){publicConfig=await api('/api/public-config').catch(()=>({meta:{}}));if(publicConfig?.meta?.appId)loadMetaSdk().catch(()=>{})}data=await api('/api/clinic/dashboard');render()}load();

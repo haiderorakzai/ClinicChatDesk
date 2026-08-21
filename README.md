@@ -1,4 +1,8 @@
-# ClinicChatDesk SaaS — Production Starter v2
+# ClinicChatDesk SaaS v2.5.0
+
+**v2.5 adds automatic Meta Embedded Signup inside the clinic dashboard.** A clinic can click **Connect existing WhatsApp Business** (Coexistence) or **Set up a new number**, complete Meta's official signup window, and ClinicChatDesk automatically captures the authorized WABA/phone IDs, exchanges the one-time authorization code server-side, encrypts the business token, completes new-number registration when needed, subscribes the WABA to your existing webhook, and shows **Connected ✓**.
+
+The clinic never copies a token, WABA ID, Phone Number ID, App Secret or webhook URL. Existing Super Admin managed onboarding remains available as a fallback. v2.4's self-service Live Demo and per-clinic localization remain included.
 
 A multi-tenant SaaS for selling a clinic-specific AI WhatsApp front desk with **Revenue Recovery**.
 
@@ -30,7 +34,6 @@ A multi-tenant SaaS for selling a clinic-specific AI WhatsApp front desk with **
 ## Core SaaS included
 
 - Public marketing website + pricing
-- Deploy marker: v2.3
 - Clinic signup/login
 - Clinic admin dashboard
 - Super-admin dashboard for the platform owner
@@ -42,7 +45,10 @@ A multi-tenant SaaS for selling a clinic-specific AI WhatsApp front desk with **
 - Deterministic booking confirmation gate
 - Emergency/sensitive-message human handoff
 - WhatsApp Cloud API webhook/send/media integration
-- Per-clinic WhatsApp credentials encrypted at rest
+- Meta Embedded Signup v4 launcher with Coexistence for existing WhatsApp Business App numbers
+- Automatic OAuth code exchange, WABA webhook subscription and new-number registration
+- Per-clinic WhatsApp access tokens and generated two-step PINs encrypted at rest
+- Connection verify, retry, reconnect and disconnect controls
 - Monthly AI request/token counters
 - Configurable message retention
 - Secure HttpOnly session cookies and password hashing
@@ -53,7 +59,7 @@ A multi-tenant SaaS for selling a clinic-specific AI WhatsApp front desk with **
 
 **Clinics do not host anything.** You host one ClinicChatDesk SaaS in your cloud account. Each clinic receives a private workspace and connects its clinic WhatsApp number to your platform.
 
-For the first paying clinics, use **managed WhatsApp onboarding** from Super Admin. After your Meta tech-provider / Embedded Signup path is approved and tested, replace managed token entry with self-service connection.
+Clinics should normally self-connect from **Clinic Dashboard → WhatsApp**. The Meta App ID and Embedded Signup configuration ID are public browser configuration; the Meta App Secret stays only on the server. Super Admin managed token entry remains available only as a fallback/support path.
 
 ## Local test
 
@@ -87,7 +93,7 @@ Never expose the API key in the website/browser.
 npm run smoke
 ```
 
-The smoke test verifies the lost-lead queue, cancellation auto-fill booking path and voice-note tracking without making a live OpenAI or WhatsApp request.
+The smoke test verifies automatic Embedded Signup token storage/subscription with mocked Meta responses, new-number PIN registration, lost-lead recovery, cancellation auto-fill, localization and voice-note tracking without contacting Meta or OpenAI.
 
 ## Production
 
@@ -95,4 +101,4 @@ See `DEPLOYMENT_GUIDE.md` and `REVENUE_RECOVERY_GUIDE.md`.
 
 ## Medical/privacy boundary
 
-ClinicChatDesk is designed for **administrative receptionist tasks**, not diagnosis or treatment. Before processing real patient/health data, obtain appropriate legal/compliance review for the jurisdictions where you sell. The included Privacy/Terms pages remain launch drafts until completed with your legal entity details and reviewed for the target market.
+ClinicChatDesk is designed for **administrative receptionist tasks**, not diagnosis or treatment. Before processing real patient/health data, obtain appropriate legal/compliance review for the jurisdictions where you sell. The included Privacy/Terms pages should still receive legal review for the markets where you sell, especially before processing regulated health information.

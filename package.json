@@ -1,9 +1,9 @@
 {
   "name": "clinicchatdesk-saas-production",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
-  "description": "ClinicChatDesk multi-tenant clinic WhatsApp AI receptionist with self-service live demo, per-clinic localization, lost-lead recovery, cancellation auto-fill and voice-note AI.",
+  "description": "ClinicChatDesk multi-tenant clinic WhatsApp AI receptionist with automatic Meta Embedded Signup, encrypted per-clinic WhatsApp credentials, live demo, localization, revenue recovery and voice-note AI.",
   "engines": {
     "node": ">=22.5.0"
   },

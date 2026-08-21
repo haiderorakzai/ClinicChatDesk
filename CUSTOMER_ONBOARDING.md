@@ -101,3 +101,19 @@ For a first pilot, keep a human receptionist actively reviewing conversations. S
 - your hosting credentials
 - direct database access
 - another clinic's information
+
+---
+
+## v2.5 client WhatsApp onboarding
+
+The normal client path is now self-service:
+
+1. Clinic creates its ClinicChatDesk workspace.
+2. Clinic completes country, currency, timezone, services and hours.
+3. Clinic opens **WhatsApp**.
+4. If the clinic already uses the WhatsApp Business App, choose **Connect existing WhatsApp Business**. This launches Meta's Coexistence path for eligible numbers.
+5. If the clinic is starting with a fresh number, choose **Set up a new number**.
+6. The clinic completes Meta's official signup window.
+7. ClinicChatDesk automatically finishes the API connection and shows **Connected ✓**.
+
+The clinic must never be asked to copy a WABA ID, Phone Number ID, access token, App Secret or webhook URL. Meta billing/payment details, when requested by Meta, are handled by Meta and are not stored by ClinicChatDesk.

@@ -1,0 +1,86 @@
+ClinicChatDesk v2.5.0 — UPDATE GUIDE
+=====================================
+
+WHAT v2.5 ADDS
+- Clinic Dashboard → WhatsApp → self-service Meta Embedded Signup.
+- Primary flow for existing WhatsApp Business App numbers using Coexistence.
+- Secondary flow for a new Cloud API number.
+- Automatic WABA ID / Phone Number ID capture.
+- Server-side OAuth code exchange. META_APP_SECRET never reaches the browser.
+- Per-clinic business access token encrypted with APP_ENCRYPTION_KEY.
+- Automatic WABA webhook subscription.
+- Automatic registration + encrypted 6-digit two-step PIN for new Cloud API numbers.
+- Connection verify / retry / reconnect / disconnect controls.
+- Existing Super Admin manual WhatsApp connection remains available as fallback.
+- Automatic SQLite migration. Existing clinic data and Railway /data volume are preserved.
+
+GITHUB UPDATE
+1. Extract ClinicChatDesk-v2.5-UPDATE-ONLY.zip.
+2. Upload the CONTENTS to the root of the existing GitHub repository, preserving public/ and src/ folders.
+3. Replace files when GitHub asks. Do not delete the repository first.
+4. Commit, for example: Upgrade ClinicChatDesk to v2.5 automatic WhatsApp onboarding
+5. Railway should auto-deploy from main.
+
+RAILWAY VARIABLES — REQUIRED FOR EMBEDDED SIGNUP
+Keep your existing secrets. Add/check:
+
+META_APP_ID=<your Meta app ID>
+META_APP_SECRET=<your Meta app secret — KEEP PRIVATE>
+META_EMBEDDED_SIGNUP_CONFIG_ID=<your v4 Embedded Signup/Login for Business config ID>
+META_GRAPH_VERSION=v26.0
+WHATSAPP_VERIFY_TOKEN=<your existing webhook verify token>
+PUBLIC_URL=https://clinicchatdesk.com
+APP_ENCRYPTION_KEY=<your existing 32-byte base64url key — DO NOT CHANGE IT>
+
+Recommended defaults:
+META_EMBEDDED_SIGNUP_ES_VERSION=v4
+META_EMBEDDED_SIGNUP_SESSION_INFO_VERSION=3
+META_EMBEDDED_SIGNUP_FEATURE_TYPE=
+META_OAUTH_REDIRECT_URI=
+
+IMPORTANT
+- Leave META_EMBEDDED_SIGNUP_FEATURE_TYPE blank. ClinicChatDesk sets
+  whatsapp_business_app_onboarding automatically only when the clinic chooses
+  “Connect existing WhatsApp Business”. The new-number flow omits it.
+- Leave META_OAUTH_REDIRECT_URI blank for the normal in-dashboard FB.login flow.
+  The Meta redirect URI you previously registered can remain:
+  https://clinicchatdesk.com/meta/embedded-signup/callback
+- Do NOT put META_APP_SECRET, access tokens, OpenAI key, encryption key or admin
+  password in GitHub.
+- Do NOT replace APP_ENCRYPTION_KEY on an existing production database. Existing
+  encrypted credentials depend on it.
+
+META SIDE CHECKLIST
+- Business Verification approved.
+- App Review / Advanced Access approved as required by your Meta setup.
+- WhatsApp webhook callback is configured to:
+  https://clinicchatdesk.com/webhook/whatsapp
+- messages webhook field subscribed.
+- App domain includes clinicchatdesk.com.
+- Facebook Login for Business / Embedded Signup configuration is the config ID
+  entered in META_EMBEDDED_SIGNUP_CONFIG_ID.
+- Coexistence must be enabled/eligible for clinics that keep an existing
+  WhatsApp Business App number.
+
+AFTER DEPLOYMENT
+1. Open https://clinicchatdesk.com/health
+2. Confirm version = 2.5.0.
+3. Log in to a REAL clinic workspace (not /demo).
+4. Open WhatsApp.
+5. Click “Connect existing WhatsApp Business” for a Business App number, or
+   “Set up a new number” for a fresh Cloud API number.
+6. Complete Meta’s popup.
+7. ClinicChatDesk should show Connected ✓ without asking for IDs/tokens.
+8. Click “Check connection”.
+9. From another WhatsApp account, message the clinic number.
+10. Confirm: webhook → AI → WhatsApp reply → conversation in dashboard.
+
+IF META AUTHORIZES BUT CONNECTION DOES NOT FINISH
+- ClinicChatDesk stores a successful business token before later Meta calls.
+- The WhatsApp page will show Needs attention.
+- Click “Retry connection” first; do not immediately repeat the whole Meta flow.
+
+SECURITY
+- Access tokens and generated new-number two-step PINs are encrypted at rest.
+- Public dashboard APIs never return the plaintext token/PIN.
+- Public demo cannot connect WhatsApp.

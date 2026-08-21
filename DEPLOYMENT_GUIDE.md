@@ -371,3 +371,26 @@ See `REVENUE_RECOVERY_GUIDE.md` for operating details.
 
 ## Port note
 The local Windows demo uses port **3100**. In Railway production, Railway provides its own `PORT` environment variable automatically; do not hard-code 3100 there. Set `PUBLIC_URL` to your real HTTPS domain and `DATA_DIR=/data`.
+
+---
+
+## v2.5 automatic Meta Embedded Signup
+
+For self-service clinic WhatsApp onboarding, configure these Railway variables in addition to the existing webhook/App Secret variables:
+
+```text
+META_APP_ID=<Meta app ID>
+META_APP_SECRET=<Meta app secret>
+META_EMBEDDED_SIGNUP_CONFIG_ID=<Facebook Login for Business / Embedded Signup v4 config ID>
+META_GRAPH_VERSION=v26.0
+META_EMBEDDED_SIGNUP_ES_VERSION=v4
+META_EMBEDDED_SIGNUP_SESSION_INFO_VERSION=3
+META_EMBEDDED_SIGNUP_FEATURE_TYPE=
+META_OAUTH_REDIRECT_URI=
+```
+
+Keep `META_APP_SECRET` server-side only. The browser receives only the App ID and configuration ID. Do not change `APP_ENCRYPTION_KEY` on an existing production database.
+
+The clinic dashboard now launches the Coexistence flow for **Connect existing WhatsApp Business** by passing `whatsapp_business_app_onboarding`, while **Set up a new number** launches standard Embedded Signup. The backend exchanges the one-time code, encrypts the business token, completes new-number registration when required, and subscribes the WABA to the existing `/webhook/whatsapp` endpoint.
+
+See `META_EMBEDDED_SIGNUP_GUIDE.md` and `V2.5_UPDATE_GUIDE.txt`.

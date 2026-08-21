@@ -11,6 +11,7 @@ import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupExp
 import { processIncoming, transcribeAudio } from './ai.mjs';
 import { runAutomationTick } from './automation.mjs';
 import { handleWhatsAppPayload, verifyMetaSignature, verifyWebhook } from './whatsapp.mjs';
+import { completeEmbeddedSignup, disconnectEmbeddedConnection, metaPublicConfig, retryEmbeddedConnection, verifyEmbeddedConnection } from './meta.mjs';
 
 initDb(); cleanupSessions(); cleanupExpiredDemoClinics(); purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));
 setInterval(()=>{try{cleanupSessions();cleanupExpiredDemoClinics();purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));}catch{}},12*60*60*1000).unref();
@@ -43,8 +44,8 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(!sameOrigin(req)) return send(res,403,{error:'Origin rejected.'});
-    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.4.0',demoMode:envBool('DEMO_MODE',true)});
-    if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:{appId:process.env.META_APP_ID||'',embeddedSignupConfigId:process.env.META_EMBEDDED_SIGNUP_CONFIG_ID||''}});
+    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.5.0',demoMode:envBool('DEMO_MODE',true)});
+    if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:metaPublicConfig()});
     if(req.method==='GET'&&url.pathname==='/api/me'){const u=getCurrentUser(req);return send(res,200,{user:u?getUserById(u.id):null});}
 
     if(req.method==='POST'&&url.pathname==='/api/demo/start'){
@@ -77,7 +78,14 @@ const server=http.createServer(async(req,res)=>{
       const cam=url.pathname.match(/^\/api\/clinic\/appointments\/([^/]+)\/cancel$/);if(req.method==='POST'&&cam){const {json}=await parseBody(req);const result=cancelAppointment(u.business_id,cam[1],json.reason||'Cancelled by clinic');setImmediate(()=>runAutomationTick({businessId:u.business_id}).catch(()=>{}));return send(res,200,result);}
       if(req.method==='GET'&&url.pathname==='/api/clinic/revenue-recovery')return send(res,200,{stats:automationStats(u.business_id),recoveryCases:listRecoveryCases(u.business_id),cancellations:listCancellationOpportunities(u.business_id)});
       if(req.method==='POST'&&url.pathname==='/api/clinic/automation/run'){const results=await runAutomationTick({businessId:u.business_id});return send(res,200,{ok:true,results});}
-      if(req.method==='GET'&&url.pathname==='/api/clinic/whatsapp')return send(res,200,{whatsapp:getWhatsAppConnection(u.business_id)});
+      if(req.method==='GET'&&url.pathname==='/api/clinic/whatsapp')return send(res,200,{whatsapp:getWhatsAppConnection(u.business_id),meta:metaPublicConfig()});
+      if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/embedded/complete'){
+        const bundle=getBusinessBundle(u.business_id);if(bundle.business?.is_demo)return send(res,403,{error:'The public demo cannot connect a real WhatsApp account.'});
+        const {json}=await parseBody(req,100_000);const result=await completeEmbeddedSignup({businessId:u.business_id,code:json.code,wabaId:json.waba_id||json.wabaId,phoneNumberId:json.phone_number_id||json.phoneNumberId,metaBusinessId:json.business_id||json.businessId,onboardingMode:json.onboarding_mode||json.onboardingMode});return send(res,200,{ok:true,...result});
+      }
+      if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/retry'){const result=await retryEmbeddedConnection(u.business_id);return send(res,200,{ok:true,whatsapp:result});}
+      if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/verify'){const result=await verifyEmbeddedConnection(u.business_id);return send(res,result.ok?200:409,result);}
+      if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/disconnect'){const result=await disconnectEmbeddedConnection(u.business_id);return send(res,200,result);}
       if(req.method==='POST'&&url.pathname==='/api/clinic/test-chat'){const {json}=await parseBody(req);const phone=String(json.phone||'+10000000000');const {customer,conversation}=getOrCreateConversation(u.business_id,phone,json.name||'Test Patient','web');const result=await processIncoming({businessId:u.business_id,customer,conversation,text:String(json.message||'')});return send(res,200,result);}
       if(req.method==='POST'&&url.pathname==='/api/clinic/test-voice'){
         if(envBool('DEMO_MODE',true)||!process.env.OPENAI_API_KEY)return send(res,400,{error:'Voice-note transcription needs live OpenAI mode. Set OPENAI_API_KEY and DEMO_MODE=false.'});
@@ -94,7 +102,7 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&url.pathname==='/api/super/clinics')return send(res,200,{clinics:listClinics(),automation:superAutomationStats()});
       const cm=url.pathname.match(/^\/api\/super\/clinics\/([^/]+)$/);if(req.method==='POST'&&cm){const {json}=await parseBody(req);return send(res,200,{business:superSetClinic(cm[1],json)});}
       const wm=url.pathname.match(/^\/api\/super\/clinics\/([^/]+)\/whatsapp$/);if(req.method==='POST'&&wm){const {json}=await parseBody(req);return send(res,200,{whatsapp:connectWhatsAppManaged(wm[1],json)});}
-      if(req.method==='GET'&&url.pathname==='/api/super/system')return send(res,200,{db:dbInfo(),publicUrl,environment:process.env.NODE_ENV||'development',openaiConfigured:!!process.env.OPENAI_API_KEY,transcribeModel:process.env.OPENAI_TRANSCRIBE_MODEL||'gpt-4o-mini-transcribe',metaConfigured:!!process.env.META_APP_SECRET,automation:superAutomationStats()});
+      if(req.method==='GET'&&url.pathname==='/api/super/system')return send(res,200,{db:dbInfo(),publicUrl,environment:process.env.NODE_ENV||'development',openaiConfigured:!!process.env.OPENAI_API_KEY,transcribeModel:process.env.OPENAI_TRANSCRIBE_MODEL||'gpt-4o-mini-transcribe',metaConfigured:metaPublicConfig().ready,automation:superAutomationStats()});
     }
 
     if(req.method==='GET'&&url.pathname==='/webhook/whatsapp'){const c=verifyWebhook(url);return c===null?send(res,403,'Forbidden'):send(res,200,c);}
@@ -109,6 +117,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/super-admin'){const u=getCurrentUser(req);if(!u)return redirect(res,'/login');if(u.role!=='super_admin')return redirect(res,'/app');return staticFile(res,'super.html')||send(res,404,'Not found');}
       if(url.pathname==='/privacy')return staticFile(res,'privacy.html')||send(res,404,'Not found');
       if(url.pathname==='/terms')return staticFile(res,'terms.html')||send(res,404,'Not found');
+      if(url.pathname==='/meta/embedded-signup/callback')return redirect(res,'/app?whatsapp=return');
       if(staticFile(res,url.pathname.slice(1)))return;
     }
     return send(res,404,{error:'Not found'});

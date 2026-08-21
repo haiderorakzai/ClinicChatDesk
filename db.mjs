@@ -218,7 +218,17 @@ export function initDb() {
       display_number TEXT,
       phone_number_id TEXT UNIQUE,
       waba_id TEXT,
+      meta_business_id TEXT,
+      connection_source TEXT NOT NULL DEFAULT 'managed',
+      onboarding_mode TEXT,
+      verified_name TEXT,
       access_token_enc TEXT,
+      two_step_pin_enc TEXT,
+      token_type TEXT,
+      token_expires_at TEXT,
+      subscribed_at TEXT,
+      last_verified_at TEXT,
+      last_error TEXT,
       connected_at TEXT,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(business_id) REFERENCES businesses(id) ON DELETE CASCADE
@@ -256,6 +266,16 @@ export function initDb() {
   ensureColumn('leads','converted_appointment_id','TEXT');
   ensureColumn('appointments','cancel_reason','TEXT');
   ensureColumn('appointments','cancelled_at','TEXT');
+  ensureColumn('whatsapp_connections','meta_business_id','TEXT');
+  ensureColumn('whatsapp_connections','connection_source',"TEXT NOT NULL DEFAULT 'managed'");
+  ensureColumn('whatsapp_connections','onboarding_mode','TEXT');
+  ensureColumn('whatsapp_connections','verified_name','TEXT');
+  ensureColumn('whatsapp_connections','two_step_pin_enc','TEXT');
+  ensureColumn('whatsapp_connections','token_type','TEXT');
+  ensureColumn('whatsapp_connections','token_expires_at','TEXT');
+  ensureColumn('whatsapp_connections','subscribed_at','TEXT');
+  ensureColumn('whatsapp_connections','last_verified_at','TEXT');
+  ensureColumn('whatsapp_connections','last_error','TEXT');
   seedSuperAdmin();
 }
 
@@ -353,8 +373,9 @@ export function getBusinessConfig(businessId) {
 export function getWhatsAppConnection(businessId, includeSecret=false) {
   const r=db.prepare('SELECT * FROM whatsapp_connections WHERE business_id=?').get(businessId);
   if (!r) return null;
-  const out={...r,access_token_configured:!!r.access_token_enc}; delete out.access_token_enc;
+  const out={...r,access_token_configured:!!r.access_token_enc,two_step_pin_configured:!!r.two_step_pin_enc}; delete out.access_token_enc; delete out.two_step_pin_enc;
   if (includeSecret && r.access_token_enc) out.access_token=decryptSecret(r.access_token_enc);
+  if (includeSecret && r.two_step_pin_enc) out.two_step_pin=decryptSecret(r.two_step_pin_enc);
   return out;
 }
 export function getBusinessBundle(businessId) { return {business:getBusiness(businessId),config:getBusinessConfig(businessId),whatsapp:getWhatsAppConnection(businessId),services:listServices(businessId)}; }
@@ -572,12 +593,40 @@ export function dashboard(businessId) {
   return {...getBusinessBundle(businessId),counts,automation:automationStats(businessId),recentConversations:listConversations(businessId,8),appointments:listAppointments(businessId,8),usage:getUsage(businessId)};
 }
 
+function upsertWhatsAppConnection(businessId,{status='connected',display_number='',phone_number_id='',waba_id='',meta_business_id='',connection_source='managed',onboarding_mode='',verified_name='',access_token='',two_step_pin='',token_type='',token_expires_at=null,subscribed_at=null,last_verified_at=null,last_error=null}={}) {
+  if(!getBusiness(businessId)) throw new Error('Clinic not found.');
+  const existing=db.prepare('SELECT * FROM whatsapp_connections WHERE business_id=?').get(businessId)||{};
+  const tokenEnc=access_token?encryptSecret(access_token):(existing.access_token_enc||null);
+  const pinEnc=two_step_pin?encryptSecret(two_step_pin):(existing.two_step_pin_enc||null);
+  const connectedAt=status==='connected'?(existing.connected_at||now()):(existing.connected_at||null);
+  try{
+    db.prepare(`INSERT INTO whatsapp_connections (business_id,status,display_number,phone_number_id,waba_id,meta_business_id,connection_source,onboarding_mode,verified_name,access_token_enc,two_step_pin_enc,token_type,token_expires_at,subscribed_at,last_verified_at,last_error,connected_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(business_id) DO UPDATE SET status=excluded.status,display_number=excluded.display_number,phone_number_id=excluded.phone_number_id,waba_id=excluded.waba_id,meta_business_id=excluded.meta_business_id,connection_source=excluded.connection_source,onboarding_mode=excluded.onboarding_mode,verified_name=excluded.verified_name,access_token_enc=excluded.access_token_enc,two_step_pin_enc=excluded.two_step_pin_enc,token_type=excluded.token_type,token_expires_at=excluded.token_expires_at,subscribed_at=excluded.subscribed_at,last_verified_at=excluded.last_verified_at,last_error=excluded.last_error,connected_at=excluded.connected_at,updated_at=excluded.updated_at`)
+      .run(businessId,status,display_number||existing.display_number||'',phone_number_id||existing.phone_number_id||'',waba_id||existing.waba_id||'',meta_business_id||existing.meta_business_id||'',connection_source||existing.connection_source||'managed',onboarding_mode||existing.onboarding_mode||'',verified_name||existing.verified_name||'',tokenEnc,pinEnc,token_type||existing.token_type||'',token_expires_at??existing.token_expires_at??null,subscribed_at??existing.subscribed_at??null,last_verified_at??existing.last_verified_at??null,last_error,connectedAt,now());
+  }catch(e){
+    if(String(e.message).toLowerCase().includes('unique')) throw new Error('This WhatsApp phone number is already connected to another ClinicChatDesk clinic.');
+    throw e;
+  }
+  return getWhatsAppConnection(businessId);
+}
+
 export function connectWhatsAppManaged(businessId,{display_number='',phone_number_id='',waba_id='',access_token=''}) {
   if(!phone_number_id || !access_token) throw new Error('Phone Number ID and access token are required.');
-  db.prepare(`INSERT INTO whatsapp_connections (business_id,status,display_number,phone_number_id,waba_id,access_token_enc,connected_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(business_id) DO UPDATE SET status=excluded.status,display_number=excluded.display_number,phone_number_id=excluded.phone_number_id,waba_id=excluded.waba_id,access_token_enc=excluded.access_token_enc,connected_at=excluded.connected_at,updated_at=excluded.updated_at`)
-    .run(businessId,'connected',display_number,phone_number_id,waba_id,encryptSecret(access_token),now(),now()); return getWhatsAppConnection(businessId);
+  return upsertWhatsAppConnection(businessId,{status:'connected',display_number,phone_number_id,waba_id,access_token,connection_source:'managed',last_verified_at:now(),last_error:null});
 }
-export function businessByPhoneNumberId(phoneNumberId){ const w=db.prepare('SELECT business_id FROM whatsapp_connections WHERE phone_number_id=? AND status="connected"').get(phoneNumberId); return w?getBusiness(w.business_id):null; }
+
+export function saveEmbeddedWhatsAppConnection(businessId,patch={}) { return upsertWhatsAppConnection(businessId,{...patch,connection_source:patch.connection_source||'embedded_signup'}); }
+export function setWhatsAppConnectionHealth(businessId,{status,last_verified_at,last_error,display_number,verified_name}={}){
+  const cur=db.prepare('SELECT * FROM whatsapp_connections WHERE business_id=?').get(businessId);if(!cur)return null;
+  db.prepare('UPDATE whatsapp_connections SET status=?,last_verified_at=?,last_error=?,display_number=?,verified_name=?,updated_at=? WHERE business_id=?')
+    .run(status||cur.status,last_verified_at??cur.last_verified_at??null,last_error??null,display_number??cur.display_number??'',verified_name??cur.verified_name??'',now(),businessId);
+  return getWhatsAppConnection(businessId);
+}
+export function clearWhatsAppConnection(businessId){
+  db.prepare(`UPDATE whatsapp_connections SET status='not_connected',display_number=NULL,phone_number_id=NULL,waba_id=NULL,meta_business_id=NULL,onboarding_mode=NULL,verified_name=NULL,access_token_enc=NULL,two_step_pin_enc=NULL,token_type=NULL,token_expires_at=NULL,subscribed_at=NULL,last_verified_at=NULL,last_error=NULL,connection_source='managed',connected_at=NULL,updated_at=? WHERE business_id=?`).run(now(),businessId);
+  return getWhatsAppConnection(businessId);
+}
+export function countWhatsAppConnectionsByWaba(wabaId){return Number(db.prepare("SELECT COUNT(*) n FROM whatsapp_connections WHERE waba_id=? AND status!='not_connected'").get(String(wabaId||'')).n||0);}
+export function businessByPhoneNumberId(phoneNumberId){ const w=db.prepare('SELECT business_id FROM whatsapp_connections WHERE phone_number_id=? AND status IN ("connected","attention")').get(phoneNumberId); return w?getBusiness(w.business_id):null; }
 
 export function incrementUsage(businessId,{input_tokens=0,output_tokens=0}={}){ const month=new Date().toISOString().slice(0,7); db.prepare(`INSERT INTO usage_monthly (business_id,month,ai_requests,input_tokens,output_tokens) VALUES (?,?,1,?,?) ON CONFLICT(business_id,month) DO UPDATE SET ai_requests=ai_requests+1,input_tokens=input_tokens+excluded.input_tokens,output_tokens=output_tokens+excluded.output_tokens`).run(businessId,month,Number(input_tokens||0),Number(output_tokens||0)); }
 export function getUsage(businessId){ const month=new Date().toISOString().slice(0,7); return db.prepare('SELECT * FROM usage_monthly WHERE business_id=? AND month=?').get(businessId,month)||{business_id:businessId,month,ai_requests:0,input_tokens:0,output_tokens:0}; }
