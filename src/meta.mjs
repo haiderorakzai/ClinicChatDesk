@@ -20,11 +20,19 @@ function safeMetaError(status,text){
   return `Meta API error ${status}.`;
 }
 async function readJson(r){ const text=await r.text(); if(!r.ok) throw new Error(safeMetaError(r.status,text)); try{return text?JSON.parse(text):{};}catch{throw new Error('Meta returned an invalid response.');} }
-function appSecretProof(token){ const secret=process.env.META_APP_SECRET||''; return secret?createHmac('sha256',secret).update(String(token)).digest('hex'):''; }
+function appSecretProof(token){
+  // App Secret Proof is optional for normal WhatsApp Graph API calls unless the
+  // Meta app has Require App Secret enabled. Do not attach it by default: a
+  // token issued for another app (or an incorrectly copied secret) makes Meta
+  // reject an otherwise valid token with OAuth error 100.
+  if(!envTrue('META_USE_APP_SECRET_PROOF')) return '';
+  const secret=String(process.env.META_APP_SECRET||'').trim();
+  return secret?createHmac('sha256',secret).update(String(token).trim()).digest('hex'):'';
+}
 async function tokenGraph(path,token,{method='GET',body=null}={}){
   const url=new URL(`${graphBase()}${path.startsWith('/')?path:`/${path}`}`);
-  // App Secret Proof is optional unless enabled in Meta, but including it makes
-  // authenticated server-to-server calls compatible with that security setting.
+  // Only attach App Secret Proof when explicitly enabled. Most WhatsApp Cloud
+  // API deployments do not require it.
   const proof=appSecretProof(token); if(proof) url.searchParams.set('appsecret_proof',proof);
   const headers={Authorization:`Bearer ${token}`};
   const opts={method,headers};
