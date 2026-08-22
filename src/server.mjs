@@ -11,7 +11,7 @@ import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupExp
 import { processIncoming, transcribeAudio } from './ai.mjs';
 import { runAutomationTick } from './automation.mjs';
 import { handleWhatsAppPayload, sendWhatsApp, verifyMetaSignature, verifyWebhook } from './whatsapp.mjs';
-import { completeEmbeddedSignup, createMessageTemplate, disconnectEmbeddedConnection, listMessageTemplates, metaPublicConfig, retryEmbeddedConnection, verifyEmbeddedConnection } from './meta.mjs';
+import { canUseMetaReviewConnection, completeEmbeddedSignup, connectMetaReviewNumber, createMessageTemplate, disconnectEmbeddedConnection, listMessageTemplates, metaPublicConfig, retryEmbeddedConnection, verifyEmbeddedConnection } from './meta.mjs';
 
 initDb(); cleanupSessions(); cleanupExpiredDemoClinics(); purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));
 setInterval(()=>{try{cleanupSessions();cleanupExpiredDemoClinics();purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));}catch{}},12*60*60*1000).unref();
@@ -44,7 +44,7 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(!sameOrigin(req)) return send(res,403,{error:'Origin rejected.'});
-    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.6.9',demoMode:envBool('DEMO_MODE',true)});
+    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.6.10',demoMode:envBool('DEMO_MODE',true)});
     if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:metaPublicConfig()});
     if(req.method==='GET'&&url.pathname==='/api/me'){const u=getCurrentUser(req);return send(res,200,{user:u?getUserById(u.id):null});}
 
@@ -65,7 +65,7 @@ const server=http.createServer(async(req,res)=>{
 
     if(url.pathname.startsWith('/api/clinic/')){
       const u=authedClinic(req,res);if(!u)return;
-      if(req.method==='GET'&&url.pathname==='/api/clinic/dashboard')return send(res,200,dashboard(u.business_id));
+      if(req.method==='GET'&&url.pathname==='/api/clinic/dashboard')return send(res,200,{...dashboard(u.business_id),metaReview:{allowed:canUseMetaReviewConnection(u)}});
       if(req.method==='GET'&&url.pathname==='/api/clinic/business')return send(res,200,getBusinessBundle(u.business_id));
       if(req.method==='POST'&&url.pathname==='/api/clinic/business'){const {json}=await parseBody(req);return send(res,200,{business:updateBusiness(u.business_id,json)});}
       if(req.method==='POST'&&url.pathname==='/api/clinic/config'){const {json}=await parseBody(req);return send(res,200,{config:updateConfig(u.business_id,json)});}
@@ -85,7 +85,11 @@ const server=http.createServer(async(req,res)=>{
       const cam=url.pathname.match(/^\/api\/clinic\/appointments\/([^/]+)\/cancel$/);if(req.method==='POST'&&cam){const {json}=await parseBody(req);const result=cancelAppointment(u.business_id,cam[1],json.reason||'Cancelled by clinic');setImmediate(()=>runAutomationTick({businessId:u.business_id}).catch(()=>{}));return send(res,200,result);}
       if(req.method==='GET'&&url.pathname==='/api/clinic/revenue-recovery')return send(res,200,{stats:automationStats(u.business_id),recoveryCases:listRecoveryCases(u.business_id),cancellations:listCancellationOpportunities(u.business_id)});
       if(req.method==='POST'&&url.pathname==='/api/clinic/automation/run'){const results=await runAutomationTick({businessId:u.business_id});return send(res,200,{ok:true,results});}
-      if(req.method==='GET'&&url.pathname==='/api/clinic/whatsapp')return send(res,200,{whatsapp:getWhatsAppConnection(u.business_id),meta:metaPublicConfig()});
+      if(req.method==='GET'&&url.pathname==='/api/clinic/whatsapp')return send(res,200,{whatsapp:getWhatsAppConnection(u.business_id),meta:metaPublicConfig(),review:{allowed:canUseMetaReviewConnection(u)}});
+      if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/review-connect'){
+        const bundle=getBusinessBundle(u.business_id);if(bundle.business?.is_demo)return send(res,403,{error:'The public demo cannot connect a real WhatsApp account.'});
+        try{const result=await connectMetaReviewNumber(u.business_id,u);return send(res,200,{ok:true,...result});}catch(e){return send(res,403,{error:e.message});}
+      }
       if(req.method==='GET'&&url.pathname==='/api/clinic/whatsapp/templates'){try{return send(res,200,{templates:await listMessageTemplates(u.business_id)});}catch(e){return send(res,502,{error:e.message});}}
       if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/templates'){const bundle=getBusinessBundle(u.business_id);if(bundle.business?.is_demo)return send(res,403,{error:'The public demo cannot manage a real WhatsApp account.'});const {json}=await parseBody(req,100_000);try{return send(res,201,{ok:true,template:await createMessageTemplate(u.business_id,json)});}catch(e){return send(res,502,{error:e.message});}}
       if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/embedded/complete'){

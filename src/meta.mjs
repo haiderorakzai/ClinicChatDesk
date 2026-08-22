@@ -32,7 +32,11 @@ async function tokenGraph(path,token,{method='GET',body=null}={}){
   return readJson(await fetch(url,opts));
 }
 
+function envTrue(name){ return /^(1|true|yes|on)$/i.test(String(process.env[name]||'').trim()); }
+
 export function metaPublicConfig(){
+  const reviewMode=envTrue('META_REVIEW_MODE');
+  const reviewReady=Boolean(reviewMode&&process.env.META_REVIEW_WABA_ID&&process.env.META_REVIEW_PHONE_NUMBER_ID&&process.env.META_REVIEW_ACCESS_TOKEN&&process.env.META_REVIEW_ALLOWED_EMAIL);
   return {
     appId:String(process.env.META_APP_ID||''),
     embeddedSignupConfigId:String(process.env.META_EMBEDDED_SIGNUP_CONFIG_ID||''),
@@ -41,7 +45,35 @@ export function metaPublicConfig(){
     sessionInfoVersion:String(process.env.META_EMBEDDED_SIGNUP_SESSION_INFO_VERSION||'3'),
     featureType:String(process.env.META_EMBEDDED_SIGNUP_FEATURE_TYPE||''),
     ready:Boolean(process.env.META_APP_ID&&process.env.META_EMBEDDED_SIGNUP_CONFIG_ID&&process.env.META_APP_SECRET),
+    reviewMode,
+    reviewReady,
   };
+}
+
+export function canUseMetaReviewConnection(user){
+  if(!envTrue('META_REVIEW_MODE')) return false;
+  const allowed=String(process.env.META_REVIEW_ALLOWED_EMAIL||'').trim().toLowerCase();
+  return Boolean(allowed&&user?.email&&String(user.email).trim().toLowerCase()===allowed);
+}
+
+export async function connectMetaReviewNumber(businessId,user){
+  const biz=getBusiness(businessId); if(!biz) throw new Error('Clinic not found.');
+  if(biz.is_demo) throw new Error('A public demo workspace cannot connect a real WhatsApp account.');
+  if(!envTrue('META_REVIEW_MODE')) throw new Error('Meta review connection mode is disabled.');
+  if(!canUseMetaReviewConnection(user)) throw new Error('This clinic account is not authorized for the Meta review connection.');
+  const wabaId=required('META_REVIEW_WABA_ID');
+  const phoneNumberId=required('META_REVIEW_PHONE_NUMBER_ID');
+  const token=required('META_REVIEW_ACCESS_TOKEN');
+  const assets=await resolveAssets(token,{wabaId,phoneNumberId});
+  await subscribeWaba(assets.wabaId,token);
+  const t=new Date().toISOString();
+  const connection=saveEmbeddedWhatsAppConnection(businessId,{
+    status:'connected',connection_source:'meta_review',onboarding_mode:'review',
+    display_number:assets.displayNumber||String(process.env.META_REVIEW_DISPLAY_NUMBER||''),
+    verified_name:assets.verifiedName||'',phone_number_id:assets.phoneNumberId,waba_id:assets.wabaId,
+    access_token:token,token_type:'review_server_token',subscribed_at:t,last_verified_at:t,last_error:null,
+  });
+  return {connection};
 }
 
 export async function exchangeEmbeddedSignupCode(code){

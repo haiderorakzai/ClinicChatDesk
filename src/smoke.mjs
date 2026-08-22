@@ -1,5 +1,5 @@
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import { DatabaseSync } from 'node:sqlite';
-const dir=fs.mkdtempSync(path.join(os.tmpdir(),'clinicchatdesk-smoke-'));process.env.DATA_DIR=dir;process.env.SUPER_ADMIN_EMAIL='smoke-owner@example.com';process.env.SUPER_ADMIN_PASSWORD='SmokePassword123!';process.env.DEMO_MODE='true';process.env.APP_ENCRYPTION_KEY=Buffer.alloc(32,7).toString('base64url');process.env.META_APP_ID='123456789';process.env.META_APP_SECRET='smoke-meta-secret';process.env.META_EMBEDDED_SIGNUP_CONFIG_ID='smoke-config';process.env.META_GRAPH_VERSION='v26.0';
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'clinicchatdesk-smoke-'));process.env.DATA_DIR=dir;process.env.SUPER_ADMIN_EMAIL='smoke-owner@example.com';process.env.SUPER_ADMIN_PASSWORD='SmokePassword123!';process.env.DEMO_MODE='true';process.env.APP_ENCRYPTION_KEY=Buffer.alloc(32,7).toString('base64url');process.env.META_APP_ID='123456789';process.env.META_APP_SECRET='smoke-meta-secret';process.env.META_EMBEDDED_SIGNUP_CONFIG_ID='smoke-config';process.env.META_GRAPH_VERSION='v26.0';process.env.META_REVIEW_MODE='true';process.env.META_REVIEW_ALLOWED_EMAIL='review-clinic@example.com';process.env.META_REVIEW_WABA_ID='waba_review';process.env.META_REVIEW_PHONE_NUMBER_ID='phone_review';process.env.META_REVIEW_ACCESS_TOKEN='SMOKE_REVIEW_TOKEN';
 const db=await import('./db.mjs');db.initDb();
 const c=db.createClinicWithOwner({clinicName:'Smoke Dental',ownerName:'Owner',email:'smoke-clinic@example.com',password:'Password123!'});
 const hours={sun:['09:00','18:00'],mon:['09:00','18:00'],tue:['09:00','18:00'],wed:['09:00','18:00'],thu:['09:00','18:00'],fri:['09:00','18:00'],sat:['09:00','18:00']};db.updateConfig(c.businessId,{opening_hours:hours,recovery_delay_minutes:15,lost_lead_recovery:true,cancellation_autofill:true,voice_notes_enabled:true});db.createService(c.businessId,{name:'Dental Cleaning',price:200,duration_minutes:30});
@@ -30,11 +30,14 @@ globalThis.fetch=async(input,opts={})=>{
   if(url.includes('/debug_token'))return json({data:{app_id:'123456789',is_valid:true,granular_scopes:[{scope:'whatsapp_business_management',target_ids:['waba_smoke']},{scope:'whatsapp_business_messaging',target_ids:['waba_smoke']}]}});
   if(url.includes('/waba_smoke/phone_numbers'))return json({data:[{id:'phone_smoke',display_phone_number:'+15551234567',verified_name:'Smoke Dental'}]});
   if(url.includes('/waba_new/phone_numbers'))return json({data:[{id:'phone_new',display_phone_number:'+15557654321',verified_name:'New Number Clinic'}]});
+  if(url.includes('/waba_review/phone_numbers'))return json({data:[{id:'phone_review',display_phone_number:'+15550001111',verified_name:'Review Clinic'}]});
   if(url.includes('/phone_new/register')&&(opts.method||'GET')==='POST')return json({success:true});
   if(url.includes('/waba_smoke/subscribed_apps')&&(opts.method||'GET')==='POST')return json({success:true});
   if(url.includes('/waba_new/subscribed_apps')&&(opts.method||'GET')==='POST')return json({success:true});
+  if(url.includes('/waba_review/subscribed_apps')&&(opts.method||'GET')==='POST')return json({success:true});
   if(url.includes('/waba_smoke/subscribed_apps'))return json({data:[{whatsapp_business_api_data:{id:'123456789',name:'ClinicChatDesk'}}]});
   if(url.includes('/waba_new/subscribed_apps'))return json({data:[{whatsapp_business_api_data:{id:'123456789',name:'ClinicChatDesk'}}]});
+  if(url.includes('/waba_review/subscribed_apps'))return json({data:[{whatsapp_business_api_data:{id:'123456789',name:'ClinicChatDesk'}}]});
   if(url.includes('/waba_smoke/message_templates')&&(opts.method||'GET')==='POST')return json({id:'tpl_new',status:'PENDING',category:'UTILITY'});
   if(url.includes('/waba_smoke/message_templates'))return json({data:[{id:'tpl_existing',name:'appointment_reminder',status:'APPROVED',category:'UTILITY',language:'en_US',components:[{type:'BODY',text:'Appointment reminder'}]}]});
   return json({error:{message:'Unexpected mock request'}},404);
@@ -54,6 +57,12 @@ try{
   await meta.completeEmbeddedSignup({businessId:c2.businessId,code:'smoke-code-new',wabaId:'waba_new',phoneNumberId:'phone_new',onboardingMode:'new'});
   const wa2=db.getWhatsAppConnection(c2.businessId,true);if(wa2.status!=='connected'||wa2.onboarding_mode!=='new'||!wa2.two_step_pin||!/^[0-9]{6}$/.test(wa2.two_step_pin))throw new Error('New-number auto-registration/PIN smoke failed');
   if(!metaCalls.some(x=>x.url.includes('/phone_new/register')&&x.method==='POST'))throw new Error('New Cloud API phone registration call was not made');
+  const c3=db.createClinicWithOwner({clinicName:'Review Clinic',ownerName:'Reviewer',email:'review-clinic@example.com',password:'Password123!'});
+  const reviewUser=db.findUserByEmail('review-clinic@example.com');
+  if(!meta.canUseMetaReviewConnection(reviewUser))throw new Error('Meta review allowlist smoke failed');
+  const reviewConnected=await meta.connectMetaReviewNumber(c3.businessId,reviewUser);const wa3=db.getWhatsAppConnection(c3.businessId,true);
+  if(reviewConnected.connection.status!=='connected'||wa3.connection_source!=='meta_review'||wa3.phone_number_id!=='phone_review'||wa3.access_token!=='SMOKE_REVIEW_TOKEN')throw new Error('Meta review server-side connection smoke failed');
+  if(!metaCalls.some(x=>x.url.includes('/waba_review/subscribed_apps')&&x.method==='POST'))throw new Error('Meta review WABA subscription call was not made');
 }finally{globalThis.fetch=realFetch;}
 
-console.log('ClinicChatDesk v2.6.9 smoke test passed: onboarding wizard, clinic team, automatic Meta Embedded Signup, encrypted WhatsApp credentials, webhook subscription, WhatsApp template management, localization, live demo, Revenue Recovery, Cancellation Auto-Fill, and Voice-Note tracking.');fs.rmSync(dir,{recursive:true,force:true});
+console.log('ClinicChatDesk v2.6.10 smoke test passed: onboarding wizard, clinic team, automatic Meta Embedded Signup, secure app-review server-side WhatsApp connection, encrypted WhatsApp credentials, webhook subscription, WhatsApp template management, localization, live demo, Revenue Recovery, Cancellation Auto-Fill, and Voice-Note tracking.');fs.rmSync(dir,{recursive:true,force:true});
