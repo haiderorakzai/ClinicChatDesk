@@ -1,4 +1,4 @@
-# ClinicChatDesk v2.6.9
+# ClinicChatDesk v2.6.10
 
 **Professional in-app modal UI + complete phone input update.**
 
@@ -118,3 +118,6 @@ See `DEPLOYMENT_GUIDE.md` and `REVENUE_RECOVERY_GUIDE.md`.
 ## Medical/privacy boundary
 
 ClinicChatDesk is designed for **administrative receptionist tasks**, not diagnosis or treatment. Before processing real patient/health data, obtain appropriate legal/compliance review for the jurisdictions where you sell. The included Privacy/Terms pages should still receive legal review for the markets where you sell, especially before processing regulated health information.
+
+## v2.6.10 — Meta App Review connection
+For pre-approval Meta review, an authorized clinic workspace can use a server-side review connection to the developer-owned WABA/Phone Number ID. Enable `META_REVIEW_MODE=true` and configure the `META_REVIEW_*` environment variables documented in `V2.6.10_META_REVIEW_CONNECTION_GUIDE.txt`. The access token never enters browser code. Disable review mode after approval.

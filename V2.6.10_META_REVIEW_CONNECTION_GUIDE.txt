@@ -1,0 +1,40 @@
+ClinicChatDesk v2.6.10 — Meta App Review Connection
+
+PURPOSE
+This update lets ONE authorized clinic workspace connect the developer-owned WhatsApp Business number used for Meta App Review without relying on public Embedded Signup. It is meant only for review/testing before Advanced Access is approved.
+
+SECURITY
+- The access token is read only from server environment variables.
+- The token is never returned to browser JavaScript.
+- The clinic account must match META_REVIEW_ALLOWED_EMAIL.
+- Public demo workspaces are blocked.
+- After Meta review, set META_REVIEW_MODE=false and use normal Embedded Signup for customer clinics.
+
+RAILWAY / SERVER VARIABLES
+Set these on your ClinicChatDesk service:
+META_REVIEW_MODE=true
+META_REVIEW_ALLOWED_EMAIL=<the email you use to log in to the clinic workspace>
+META_REVIEW_WABA_ID=<your WhatsApp Business Account ID>
+META_REVIEW_PHONE_NUMBER_ID=<the registered Phone Number ID>
+META_REVIEW_DISPLAY_NUMBER=<optional display number>
+META_REVIEW_ACCESS_TOKEN=<your permanent/system-user token; never send this token in chat>
+
+You still need the normal Meta values already used by ClinicChatDesk:
+META_APP_ID
+META_APP_SECRET
+WHATSAPP_VERIFY_TOKEN
+META_GRAPH_VERSION
+
+HOW TO USE
+1. Deploy v2.6.10.
+2. Add the environment variables above and restart the service.
+3. Log into the clinic workspace whose email exactly matches META_REVIEW_ALLOWED_EMAIL.
+4. Open WhatsApp.
+5. Click “Connect app-review number”.
+6. ClinicChatDesk verifies the WABA/phone through Meta, subscribes the webhook, encrypts the token and marks the clinic Connected.
+7. Send a WhatsApp message from your iPhone to the registered number. It should appear under Conversations.
+8. Reply manually from Conversations for whatsapp_business_messaging review.
+9. Create a Message Template from WhatsApp > Message templates for whatsapp_business_management review.
+
+AFTER REVIEW
+Set META_REVIEW_MODE=false. The review-only button disappears. Normal clinics should use Meta Embedded Signup.
