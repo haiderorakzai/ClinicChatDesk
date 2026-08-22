@@ -60,3 +60,17 @@ OAuth codes are single-use. v2.5 saves the exchanged business token before regis
 ## App Review / production
 
 Embedded Signup code does not bypass Meta approval. Production onboarding still depends on the permissions/advanced access, Tech Provider status, business verification, App Review and account eligibility required by Meta for your app.
+
+## v2.6.9 App Review evidence
+
+ClinicChatDesk now exposes the two real product flows needed for the WhatsApp permission review:
+
+### `whatsapp_business_messaging`
+
+Use a real WhatsApp conversation in **Dashboard → Conversations**. Put the conversation into **Take over** mode, send a fresh patient message from the test iPhone, show it arriving in ClinicChatDesk, type the clinic reply in the manual reply box, click **Send message**, and show the same reply arriving on the iPhone. Manual replies use the connected clinic phone number through the WhatsApp Cloud API and are stored in the conversation history.
+
+### `whatsapp_business_management`
+
+Use **Dashboard → WhatsApp → Message templates**. The page lists templates from the connected WABA and lets an authorized clinic user create a template from ClinicChatDesk. For a clean review recording, create a new **Utility** template with a unique lowercase name and a simple appointment-reminder body, submit it, then show the returned Pending/Approved status in the ClinicChatDesk template list.
+
+The connected Meta access token must include the permissions required by these actions. Tokens remain server-side; never show an access token, App Secret, OTP, or two-step PIN in an App Review recording.

@@ -1,0 +1,20 @@
+ClinicChatDesk v2.5.4 CSP Fix
+
+Cause fixed:
+Meta Facebook SDK was initialized correctly, but ClinicChatDesk's Content-Security-Policy blocked the SDK from requesting:
+https://connect.facebook.net/app_config/json/...
+
+Change:
+Added https://connect.facebook.net to CSP connect-src.
+
+Upload these files to matching GitHub locations:
+- package.json
+- src/server.mjs
+
+After Railway deploys:
+1. Open https://clinicchatdesk.com/health and confirm version 2.5.4.
+2. Open a fresh/incognito browser window.
+3. Log in to a clinic account.
+4. Go to WhatsApp and click Connect existing WhatsApp Business.
+
+No Railway variables or Meta settings need to change for this hotfix.

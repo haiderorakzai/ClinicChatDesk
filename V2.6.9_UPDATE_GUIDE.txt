@@ -1,0 +1,30 @@
+ClinicChatDesk v2.6.9 — WhatsApp App Review / Production Messaging Update
+
+What changed
+1. Added real manual WhatsApp replies from Conversations.
+   - Open a real WhatsApp conversation.
+   - Type a reply and click Send message.
+   - ClinicChatDesk sends through the connected WhatsApp Cloud API number.
+   - Manual sending automatically enables human takeover for that conversation so AI does not compete with staff.
+
+2. Added WhatsApp Message Templates inside ClinicChatDesk.
+   - Open Dashboard > WhatsApp.
+   - When WhatsApp is connected, a Message templates panel appears.
+   - Existing templates are loaded from the connected WhatsApp Business Account.
+   - Create Template submits a real template to Meta through the WhatsApp Business Management API.
+   - Utility and Marketing categories are supported in this lightweight screen.
+   - Body variables {{1}}, {{2}}, etc. are supported when matching sample values are supplied.
+
+3. Added backend endpoints
+   GET  /api/clinic/whatsapp/templates
+   POST /api/clinic/whatsapp/templates
+   POST /api/clinic/conversations/:id/messages
+
+Meta App Review recording
+- whatsapp_business_messaging: put an existing WhatsApp conversation into Take over mode, send a fresh message from the iPhone, show it appear in ClinicChatDesk, manually reply from ClinicChatDesk, then show the reply arrive on the iPhone.
+- whatsapp_business_management: Dashboard > WhatsApp > Message templates > Create template > submit a Utility template > show the new template and its Pending/Approved status in the list.
+
+Important
+- The connected Meta token must include whatsapp_business_messaging for sending and whatsapp_business_management for template listing/creation.
+- Template creation still goes through Meta review; ClinicChatDesk does not bypass approval.
+- Do not expose access tokens, App Secret, OTPs or passwords in review recordings.

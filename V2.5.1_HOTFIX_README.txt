@@ -1,0 +1,12 @@
+ClinicChatDesk v2.5.1 Facebook SDK initialization hotfix
+
+Fixes browser console error:
+  FB.login() called before FB.init().
+
+Upload these files to the matching paths in the existing GitHub repository:
+  public/clinic.js
+  src/server.mjs
+  package.json
+
+After Railway deploys, /health should report version 2.5.1.
+Then hard-refresh the clinic dashboard (Ctrl+F5) before testing Connect WhatsApp.

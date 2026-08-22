@@ -1,4 +1,4 @@
-ClinicChatDesk v2.6.3 — Modal UI + Phone Input
+ClinicChatDesk v2.6.7 — Modal UI + Phone Input
 
 WHAT CHANGED
 - Replaced clinic-facing browser prompt(), alert() and confirm() dialogs with branded ClinicChatDesk modals/toasts.
@@ -13,10 +13,10 @@ WHAT CHANGED
 - Includes the v2.6.1 CSS/cache fix and v2.6.2 WhatsApp .opus voice-note transcription fix.
 
 DEPLOY
-1. Extract ClinicChatDesk-v2.6.3-UPDATE-ONLY.zip.
+1. Extract ClinicChatDesk-v2.6.7-UPDATE-ONLY.zip.
 2. Upload all extracted files/folders to the ROOT of your existing GitHub repository, preserving folder paths.
 3. Let Railway auto-deploy.
-4. Check https://clinicchatdesk.com/health — it should show version 2.6.3.
+4. Check https://clinicchatdesk.com/health — it should show version 2.6.7.
 5. Hard refresh once (Ctrl+F5).
 
 NO NEW RAILWAY VARIABLES ARE REQUIRED.

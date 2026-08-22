@@ -1,0 +1,17 @@
+ClinicChatDesk v2.5.2 - Meta SDK Init + Cache Fix
+
+Fixes:
+1. Forces /clinic.js?v=2.5.2 in app.html so browsers cannot keep using stale v2.5/v2.5.1 JavaScript.
+2. Serves .js files with Cache-Control: no-store to prevent future stale frontend deployments while ClinicChatDesk is in active development.
+3. Makes Meta SDK initialization robust when window.FB already exists before fbAsyncInit fires.
+4. Adds console marker: ClinicChatDesk frontend v2.5.2 loaded
+5. /health reports 2.5.2.
+
+Upload ALL files/folders from this package to the matching locations in the existing GitHub repository.
+After Railway deploys:
+- open https://clinicchatdesk.com/health and confirm 2.5.2
+- reload clinic dashboard
+- DevTools Console should show: ClinicChatDesk frontend v2.5.2 loaded
+- click Connect existing WhatsApp Business
+
+The favicon.ico 404 visible in DevTools is unrelated to Meta login.

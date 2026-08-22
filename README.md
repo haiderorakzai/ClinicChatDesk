@@ -1,3 +1,7 @@
+# ClinicChatDesk v2.6.9
+
+**Professional in-app modal UI + complete phone input update.**
+
 # ClinicChatDesk SaaS v2.6.0
 
 **v2.6 is the customer-onboarding and professional UI release.** It keeps every v2.5.4 Meta Embedded Signup/CSP fix and adds a polished marketing site, a guided 7-step clinic setup wizard, setup progress, doctors/staff management, a dedicated pricing page, improved demo/sales CTAs, favicon/brand icon support, and a more professional clinic dashboard.

@@ -1,0 +1,9 @@
+ClinicChatDesk v2.6.8 — Demo Submit Hotfix
+
+Fixes:
+- Includes public/demo.js in the update package (it was accidentally omitted from v2.6.7 update-only).
+- Loading state is now attached only to the Launch live demo button.
+- Spinner and 'Launching demo…' stay inside the submit button.
+- Keeps the professional Opening Hours editor from v2.6.7.
+
+Deploy all files from the update-only ZIP to matching GitHub paths, then confirm /health shows 2.6.8 and hard-refresh the /demo page.

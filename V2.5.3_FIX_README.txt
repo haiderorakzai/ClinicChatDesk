@@ -1,0 +1,24 @@
+ClinicChatDesk v2.5.3 — Meta SDK initialization hotfix
+
+Why this exists
+---------------
+Meta settings and ClinicChatDesk public config were confirmed correct, but Chrome still reported:
+  FB.login() called before FB.init().
+
+v2.5.2 could treat an early/partial window.FB object as a fully loaded SDK. v2.5.3 removes that shortcut and initializes FB only after sdk.js has completed loading (using both fbAsyncInit and the script load event).
+
+Upload these files to the matching locations in your existing GitHub repository:
+  package.json
+  public/app.html
+  public/clinic.js
+  src/server.mjs
+
+After Railway deploys:
+1. Open https://clinicchatdesk.com/health and confirm 2.5.3.
+2. Hard refresh / open a fresh Incognito window.
+3. In DevTools Console confirm:
+   ClinicChatDesk frontend v2.5.3 loaded
+   Meta Facebook SDK initialized for ClinicChatDesk
+4. Click Connect existing WhatsApp Business.
+
+No Railway secret values need to change for this hotfix.

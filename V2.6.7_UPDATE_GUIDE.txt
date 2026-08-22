@@ -1,4 +1,4 @@
-ClinicChatDesk v2.6.7
+ClinicChatDesk v2.6.8
 
 Fixes:
 - Business Knowledge opening hours now uses the new Open/Closed + Opens + Closes dropdown design.
@@ -7,4 +7,4 @@ Fixes:
 
 Deploy:
 Upload the update-only files to the matching GitHub paths and let Railway redeploy.
-Check /health for version 2.6.7, then hard refresh once.
+Check /health for version 2.6.8, then hard refresh once.
