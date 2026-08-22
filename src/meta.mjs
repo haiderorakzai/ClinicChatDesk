@@ -188,6 +188,45 @@ export async function verifyEmbeddedConnection(businessId){
   }catch(e){ setWhatsAppConnectionHealth(businessId,{status:'attention',last_error:e.message}); return {ok:false,error:e.message,connection:getWhatsAppConnection(businessId)}; }
 }
 
+function templateVariables(body=''){
+  const nums=[...String(body).matchAll(/\{\{(\d+)\}\}/g)].map(m=>Number(m[1]));
+  const unique=[...new Set(nums)].sort((a,b)=>a-b);
+  if(unique.length&&unique.some((n,i)=>n!==i+1)) throw new Error('Template variables must be sequential: {{1}}, {{2}}, {{3}}, and so on.');
+  return unique;
+}
+
+export async function listMessageTemplates(businessId){
+  const w=getWhatsAppConnection(businessId,true);
+  if(!w?.access_token||!w?.waba_id) throw new Error('WhatsApp is not connected for this clinic.');
+  const fields='id,name,status,category,language,components,quality_score';
+  const out=await tokenGraph(`/${encodeURIComponent(w.waba_id)}/message_templates?fields=${encodeURIComponent(fields)}&limit=100`,w.access_token);
+  const templates=Array.isArray(out?.data)?out.data:[];
+  templates.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  return templates;
+}
+
+export async function createMessageTemplate(businessId,{name='',category='UTILITY',language='en_US',body='',samples=[]}={}){
+  const w=getWhatsAppConnection(businessId,true);
+  if(!w?.access_token||!w?.waba_id) throw new Error('WhatsApp is not connected for this clinic.');
+  name=String(name||'').trim().toLowerCase();
+  if(!/^[a-z0-9_]{1,512}$/.test(name)) throw new Error('Template name can contain only lowercase letters, numbers and underscores.');
+  category=String(category||'UTILITY').trim().toUpperCase();
+  if(!['UTILITY','MARKETING'].includes(category)) throw new Error('Choose Utility or Marketing for this template.');
+  language=String(language||'en_US').trim();
+  if(!/^[A-Za-z]{2,3}(?:_[A-Za-z]{2})?$/.test(language)) throw new Error('Enter a valid WhatsApp language code such as en_US, ur, ar or hi.');
+  body=String(body||'').trim();
+  if(!body) throw new Error('Template message body is required.');
+  if(body.length>1024) throw new Error('Template body must be 1024 characters or fewer.');
+  const vars=templateVariables(body);
+  const cleanSamples=Array.isArray(samples)?samples.map(x=>String(x||'').trim()).filter(Boolean):[];
+  if(vars.length&&cleanSamples.length!==vars.length) throw new Error(`This message uses ${vars.length} variable(s). Add exactly ${vars.length} sample value(s), one for each variable.`);
+  const component={type:'BODY',text:body};
+  if(vars.length) component.example={body_text:[cleanSamples]};
+  const payload={name,language,category,components:[component]};
+  const result=await tokenGraph(`/${encodeURIComponent(w.waba_id)}/message_templates`,w.access_token,{method:'POST',body:payload});
+  return {id:result?.id||'',status:result?.status||'PENDING',category:result?.category||category,name,language,components:[component]};
+}
+
 export async function disconnectEmbeddedConnection(businessId){
   const w=getWhatsAppConnection(businessId,true); if(!w) return {ok:true};
   let warning='';

@@ -481,6 +481,7 @@ export function getConversationMessages(businessId, conversationId, limit=100) {
   const c=db.prepare('SELECT id FROM conversations WHERE id=? AND business_id=?').get(conversationId,businessId); if(!c) return [];
   return db.prepare('SELECT id,role,text,message_type,media_id,metadata_json,created_at FROM messages WHERE conversation_id=? ORDER BY created_at ASC LIMIT ?').all(conversationId,limit).map(m=>{let metadata={};try{metadata=JSON.parse(m.metadata_json||'{}')}catch{}return{...m,metadata};});
 }
+export function getConversationTarget(businessId, conversationId) { return db.prepare(`SELECT c.id,c.channel,c.human_handoff,cu.id customer_id,cu.name customer_name,cu.phone customer_phone FROM conversations c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=? AND c.business_id=?`).get(conversationId,businessId)||null; }
 export function setHandoff(businessId, conversationId, enabled) { db.prepare('UPDATE conversations SET human_handoff=?,updated_at=? WHERE id=? AND business_id=?').run(enabled?1:0,now(),conversationId,businessId); }
 export function listAppointments(businessId, limit=100) {
   return db.prepare(`SELECT a.*,cu.name customer_name,cu.phone customer_phone,s.name service_name,s.currency,s.price FROM appointments a

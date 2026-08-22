@@ -7,11 +7,11 @@ import { loadEnv, envBool } from './env.mjs';
 loadEnv();
 import { verifyPassword } from './crypto.mjs';
 import { clearCookie, getCurrentUser, logout, requireUser, sessionCookie, startSession } from './auth.mjs';
-import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupExpiredDemoClinics, cleanupSessions, connectWhatsAppManaged, createClinicWithOwner, createDemoClinic, createService, createStaff, dashboard, dbInfo, findUserByEmail, getBusinessBundle, getConversationMessages, getOnboardingState, getOrCreateConversation, getUserById, getWhatsAppConnection, initDb, listAppointments, listCancellationOpportunities, listClinics, listConversations, listStaff, listRecoveryCases, purgeOldMessages, setHandoff, superAutomationStats, superSetClinic, updateBusiness, updateConfig, updateOnboarding, updateService, updateStaff } from './db.mjs';
+import { automationStats, businessByPhoneNumberId, cancelAppointment, cleanupExpiredDemoClinics, cleanupSessions, connectWhatsAppManaged, createClinicWithOwner, createDemoClinic, createService, createStaff, dashboard, dbInfo, findUserByEmail, getBusinessBundle, getConversationMessages, getConversationTarget, getOnboardingState, getOrCreateConversation, getUserById, getWhatsAppConnection, initDb, listAppointments, listCancellationOpportunities, listClinics, listConversations, listStaff, listRecoveryCases, purgeOldMessages, saveMessage, setHandoff, superAutomationStats, superSetClinic, updateBusiness, updateConfig, updateOnboarding, updateService, updateStaff } from './db.mjs';
 import { processIncoming, transcribeAudio } from './ai.mjs';
 import { runAutomationTick } from './automation.mjs';
-import { handleWhatsAppPayload, verifyMetaSignature, verifyWebhook } from './whatsapp.mjs';
-import { completeEmbeddedSignup, disconnectEmbeddedConnection, metaPublicConfig, retryEmbeddedConnection, verifyEmbeddedConnection } from './meta.mjs';
+import { handleWhatsAppPayload, sendWhatsApp, verifyMetaSignature, verifyWebhook } from './whatsapp.mjs';
+import { completeEmbeddedSignup, createMessageTemplate, disconnectEmbeddedConnection, listMessageTemplates, metaPublicConfig, retryEmbeddedConnection, verifyEmbeddedConnection } from './meta.mjs';
 
 initDb(); cleanupSessions(); cleanupExpiredDemoClinics(); purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));
 setInterval(()=>{try{cleanupSessions();cleanupExpiredDemoClinics();purgeOldMessages(Number(process.env.MESSAGE_RETENTION_DAYS||30));}catch{}},12*60*60*1000).unref();
@@ -44,7 +44,7 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(!sameOrigin(req)) return send(res,403,{error:'Origin rejected.'});
-    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.6.7',demoMode:envBool('DEMO_MODE',true)});
+    if(req.method==='GET'&&url.pathname==='/health')return send(res,200,{ok:true,service:'clinicchatdesk-saas',version:'2.6.9',demoMode:envBool('DEMO_MODE',true)});
     if(req.method==='GET'&&url.pathname==='/api/public-config')return send(res,200,{appName:process.env.APP_NAME||'ClinicChatDesk',publicUrl,trialDays:Number(process.env.TRIAL_DAYS||14),prices:{starter:Number(process.env.STARTER_PRICE_USD||99),pro:Number(process.env.PRO_PRICE_USD||249),growth:Number(process.env.GROWTH_PRICE_USD||499)},meta:metaPublicConfig()});
     if(req.method==='GET'&&url.pathname==='/api/me'){const u=getCurrentUser(req);return send(res,200,{user:u?getUserById(u.id):null});}
 
@@ -77,13 +77,17 @@ const server=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&url.pathname==='/api/clinic/onboarding')return send(res,200,getOnboardingState(u.business_id));
       if(req.method==='POST'&&url.pathname==='/api/clinic/onboarding'){const {json}=await parseBody(req);return send(res,200,updateOnboarding(u.business_id,json));}
       if(req.method==='GET'&&url.pathname==='/api/clinic/conversations')return send(res,200,{conversations:listConversations(u.business_id)});
-      const mm=url.pathname.match(/^\/api\/clinic\/conversations\/([^/]+)\/messages$/);if(req.method==='GET'&&mm)return send(res,200,{messages:getConversationMessages(u.business_id,mm[1])});
+      const mm=url.pathname.match(/^\/api\/clinic\/conversations\/([^/]+)\/messages$/);
+      if(req.method==='GET'&&mm)return send(res,200,{messages:getConversationMessages(u.business_id,mm[1])});
+      if(req.method==='POST'&&mm){const target=getConversationTarget(u.business_id,mm[1]);if(!target)return send(res,404,{error:'Conversation not found.'});if(target.channel!=='whatsapp')return send(res,400,{error:'Manual sending is available for WhatsApp conversations only.'});const {json}=await parseBody(req);const text=String(json.text||'').trim();if(!text)return send(res,400,{error:'Message text is required.'});if(text.length>4096)return send(res,400,{error:'Message is too long.'});setHandoff(u.business_id,mm[1],true);try{const result=await sendWhatsApp(u.business_id,target.customer_phone,text);const externalId=result?.messages?.[0]?.id||null;saveMessage(mm[1],'assistant',text,externalId,{manual:true,sent_by:u.id});return send(res,200,{ok:true,message_id:externalId});}catch(e){return send(res,502,{error:e.message});}}
       const hm=url.pathname.match(/^\/api\/clinic\/conversations\/([^/]+)\/handoff$/);if(req.method==='POST'&&hm){const {json}=await parseBody(req);setHandoff(u.business_id,hm[1],!!json.enabled);return send(res,200,{ok:true});}
       if(req.method==='GET'&&url.pathname==='/api/clinic/appointments')return send(res,200,{appointments:listAppointments(u.business_id)});
       const cam=url.pathname.match(/^\/api\/clinic\/appointments\/([^/]+)\/cancel$/);if(req.method==='POST'&&cam){const {json}=await parseBody(req);const result=cancelAppointment(u.business_id,cam[1],json.reason||'Cancelled by clinic');setImmediate(()=>runAutomationTick({businessId:u.business_id}).catch(()=>{}));return send(res,200,result);}
       if(req.method==='GET'&&url.pathname==='/api/clinic/revenue-recovery')return send(res,200,{stats:automationStats(u.business_id),recoveryCases:listRecoveryCases(u.business_id),cancellations:listCancellationOpportunities(u.business_id)});
       if(req.method==='POST'&&url.pathname==='/api/clinic/automation/run'){const results=await runAutomationTick({businessId:u.business_id});return send(res,200,{ok:true,results});}
       if(req.method==='GET'&&url.pathname==='/api/clinic/whatsapp')return send(res,200,{whatsapp:getWhatsAppConnection(u.business_id),meta:metaPublicConfig()});
+      if(req.method==='GET'&&url.pathname==='/api/clinic/whatsapp/templates'){try{return send(res,200,{templates:await listMessageTemplates(u.business_id)});}catch(e){return send(res,502,{error:e.message});}}
+      if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/templates'){const bundle=getBusinessBundle(u.business_id);if(bundle.business?.is_demo)return send(res,403,{error:'The public demo cannot manage a real WhatsApp account.'});const {json}=await parseBody(req,100_000);try{return send(res,201,{ok:true,template:await createMessageTemplate(u.business_id,json)});}catch(e){return send(res,502,{error:e.message});}}
       if(req.method==='POST'&&url.pathname==='/api/clinic/whatsapp/embedded/complete'){
         const bundle=getBusinessBundle(u.business_id);if(bundle.business?.is_demo)return send(res,403,{error:'The public demo cannot connect a real WhatsApp account.'});
         const {json}=await parseBody(req,100_000);const result=await completeEmbeddedSignup({businessId:u.business_id,code:json.code,wabaId:json.waba_id||json.wabaId,phoneNumberId:json.phone_number_id||json.phoneNumberId,metaBusinessId:json.business_id||json.businessId,onboardingMode:json.onboarding_mode||json.onboardingMode});return send(res,200,{ok:true,...result});

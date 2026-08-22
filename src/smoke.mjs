@@ -35,6 +35,8 @@ globalThis.fetch=async(input,opts={})=>{
   if(url.includes('/waba_new/subscribed_apps')&&(opts.method||'GET')==='POST')return json({success:true});
   if(url.includes('/waba_smoke/subscribed_apps'))return json({data:[{whatsapp_business_api_data:{id:'123456789',name:'ClinicChatDesk'}}]});
   if(url.includes('/waba_new/subscribed_apps'))return json({data:[{whatsapp_business_api_data:{id:'123456789',name:'ClinicChatDesk'}}]});
+  if(url.includes('/waba_smoke/message_templates')&&(opts.method||'GET')==='POST')return json({id:'tpl_new',status:'PENDING',category:'UTILITY'});
+  if(url.includes('/waba_smoke/message_templates'))return json({data:[{id:'tpl_existing',name:'appointment_reminder',status:'APPROVED',category:'UTILITY',language:'en_US',components:[{type:'BODY',text:'Appointment reminder'}]}]});
   return json({error:{message:'Unexpected mock request'}},404);
 };
 try{
@@ -44,6 +46,9 @@ try{
   if('access_token' in wa)throw new Error('Access token leaked through public WhatsApp connection getter');
   if(db.getWhatsAppConnection(c.businessId,true).access_token!=='SMOKE_BISU_TOKEN')throw new Error('Encrypted WhatsApp token could not be recovered server-side');
   const verified=await meta.verifyEmbeddedConnection(c.businessId);if(!verified.ok)throw new Error('Embedded Signup verification smoke failed');
+  const templates=await meta.listMessageTemplates(c.businessId);if(templates.length!==1||templates[0].name!=='appointment_reminder')throw new Error('WhatsApp template listing smoke failed');
+  const createdTemplate=await meta.createMessageTemplate(c.businessId,{name:'appointment_reminder_review',category:'UTILITY',language:'en_US',body:'Hello {{1}}, your appointment is on {{2}}.',samples:['Ahmed','25 August 2026 at 3:00 PM']});if(createdTemplate.status!=='PENDING'||createdTemplate.name!=='appointment_reminder_review')throw new Error('WhatsApp template creation smoke failed');
+  if(!metaCalls.some(x=>x.url.includes('/message_templates')&&x.method==='POST'))throw new Error('WhatsApp template management API call was not made');
   if(!metaCalls.some(x=>x.url.includes('/subscribed_apps')&&x.method==='POST'))throw new Error('WABA subscription call was not made');
   const c2=db.createClinicWithOwner({clinicName:'New Number Clinic',ownerName:'Owner 2',email:'new-number@example.com',password:'Password123!'});
   await meta.completeEmbeddedSignup({businessId:c2.businessId,code:'smoke-code-new',wabaId:'waba_new',phoneNumberId:'phone_new',onboardingMode:'new'});
@@ -51,4 +56,4 @@ try{
   if(!metaCalls.some(x=>x.url.includes('/phone_new/register')&&x.method==='POST'))throw new Error('New Cloud API phone registration call was not made');
 }finally{globalThis.fetch=realFetch;}
 
-console.log('ClinicChatDesk v2.6 smoke test passed: onboarding wizard, clinic team, automatic Meta Embedded Signup, encrypted WhatsApp credentials, webhook subscription, localization, live demo, Revenue Recovery, Cancellation Auto-Fill, and Voice-Note tracking.');fs.rmSync(dir,{recursive:true,force:true});
+console.log('ClinicChatDesk v2.6.9 smoke test passed: onboarding wizard, clinic team, automatic Meta Embedded Signup, encrypted WhatsApp credentials, webhook subscription, WhatsApp template management, localization, live demo, Revenue Recovery, Cancellation Auto-Fill, and Voice-Note tracking.');fs.rmSync(dir,{recursive:true,force:true});
