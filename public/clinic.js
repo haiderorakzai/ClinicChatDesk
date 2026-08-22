@@ -158,10 +158,15 @@ function renderWhatsApp(){
     const r=qs('#waRetry');if(r)r.onclick=retryWhatsApp;qs('#waReconnect').onclick=()=>startWhatsAppSignup('existing');return;
   }
   qs('#waStatus').innerHTML=`<span class="status warn">Not connected</span><h2>Turn your clinic’s WhatsApp into an AI front desk</h2><p style="color:var(--muted);max-width:650px">Connect through Meta’s secure signup. You can choose an eligible existing WhatsApp Business App number or set up a new number. ClinicChatDesk completes the API connection automatically.</p>`;
-  if(!m.ready){
+  const reviewReady=!!m.reviewReady&&!!data?.metaReview?.allowed;
+  if(!m.ready&&!reviewReady){
     qs('#waActions').innerHTML='<button class="btn brand" disabled>Connect WhatsApp</button><span class="kpi-note">Platform Meta configuration is not complete yet.</span>';
-  }else qs('#waActions').innerHTML='<button id="waConnectExisting" class="btn brand wa-connect-btn">Connect existing WhatsApp Business <span>→</span></button><button id="waConnectNew" class="btn ghost">Set up a new number</button>';
-  const ce=qs('#waConnectExisting'),cn=qs('#waConnectNew');if(ce)ce.onclick=()=>startWhatsAppSignup('existing');if(cn)cn.onclick=()=>startWhatsAppSignup('new');
+  }else{
+    const normal=m.ready?'<button id="waConnectExisting" class="btn brand wa-connect-btn">Connect existing WhatsApp Business <span>→</span></button><button id="waConnectNew" class="btn ghost">Set up a new number</button>':'';
+    const review=reviewReady?'<button id="waReviewConnect" class="btn review-connect-btn">Connect app-review number</button><span class="kpi-note review-only-note">App review only · uses server-side review credentials and is disabled for normal clinic onboarding.</span>':'';
+    qs('#waActions').innerHTML=normal+review;
+  }
+  const ce=qs('#waConnectExisting'),cn=qs('#waConnectNew'),rc=qs('#waReviewConnect');if(ce)ce.onclick=()=>startWhatsAppSignup('existing');if(cn)cn.onclick=()=>startWhatsAppSignup('new');if(rc)rc.onclick=connectReviewWhatsApp;
 }
 
 function templateBody(t){const c=(t?.components||[]).find(x=>String(x?.type||'').toUpperCase()==='BODY');return c?.text||''}
@@ -256,6 +261,13 @@ async function startWhatsAppSignup(mode='existing'){
       forceTimer=setTimeout(()=>complete(true),1800);complete(false);
     },{config_id:m.embeddedSignupConfigId,response_type:'code',override_default_response_type:true,extras});
   }catch(e){cleanup();waProgress(false);waShowError(e.message)}
+}
+
+async function connectReviewWhatsApp(){
+  waShowError('');waProgress(true,'Connecting app-review number…','ClinicChatDesk is verifying the server-side review token, phone number and webhook subscription with Meta.');
+  try{await post('/api/clinic/whatsapp/review-connect',{});await load();page('whatsapp');showToast('Meta app-review WhatsApp number connected.');}
+  catch(e){waShowError(e.message);await load().catch(()=>{});page('whatsapp')}
+  finally{waProgress(false)}
 }
 
 async function verifyWhatsApp(){waShowError('');waProgress(true,'Checking Meta connection…','Verifying the phone number and webhook subscription.');try{await post('/api/clinic/whatsapp/verify',{});await load();page('whatsapp')}catch(e){waShowError(e.message);await load().catch(()=>{});page('whatsapp')}finally{waProgress(false)}}
