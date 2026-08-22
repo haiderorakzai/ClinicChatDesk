@@ -1,4 +1,4 @@
-# ClinicChatDesk v2.6.10
+# ClinicChatDesk v2.6.11
 
 **Professional in-app modal UI + complete phone input update.**
 
@@ -121,3 +121,7 @@ ClinicChatDesk is designed for **administrative receptionist tasks**, not diagno
 
 ## v2.6.10 — Meta App Review connection
 For pre-approval Meta review, an authorized clinic workspace can use a server-side review connection to the developer-owned WABA/Phone Number ID. Enable `META_REVIEW_MODE=true` and configure the `META_REVIEW_*` environment variables documented in `V2.6.10_META_REVIEW_CONNECTION_GUIDE.txt`. The access token never enters browser code. Disable review mode after approval.
+
+
+## v2.6.11 — Meta App Secret Proof fix
+Authenticated WhatsApp Graph API calls no longer attach `appsecret_proof` automatically. Set `META_USE_APP_SECRET_PROOF=true` only when the Meta app explicitly requires App Secret Proof, and only when `META_APP_SECRET` is the exact secret for the same Meta app that issued the access token. This fixes `Meta API error 400: Invalid appsecret_proof provided in the API argument` during the App Review connection flow.

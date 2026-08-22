@@ -1,0 +1,14 @@
+ClinicChatDesk v2.6.11 — Meta App Secret Proof Fix
+
+Problem fixed:
+Meta API error 400: Invalid appsecret_proof provided in the API argument
+
+Cause:
+v2.6.10 attached appsecret_proof to every token-authenticated Graph API call whenever META_APP_SECRET was configured. Meta rejects the call when that secret does not exactly match the app that issued the access token. App Secret Proof is optional unless the Meta app explicitly requires it.
+
+Default configuration:
+META_USE_APP_SECRET_PROOF=false
+
+Only set META_USE_APP_SECRET_PROOF=true if your Meta app has Require App Secret enabled. In that case META_APP_SECRET must be the exact App Secret of the same Meta app used to generate META_REVIEW_ACCESS_TOKEN.
+
+After deploying v2.6.11, restart the service and click Connect app-review number again.
